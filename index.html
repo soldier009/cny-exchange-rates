@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b5fff" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>人民币汇率实时查询</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E¥%3C/text%3E%3C/svg%3E" />
+  <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.2/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #0b5fff;
+      --primary-soft: #eaf1ff;
+      --up: #d9362d;
+      --down: #1a8a3f;
+      --text: #1c2330;
+      --text-sub: #6b7280;
+      --border: #ececf1;
+      --bg: #f5f6f8;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    .app { max-width: 560px; margin: 0 auto; min-height: 100vh; }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #0b5fff 0%, #1d6bff 100%);
+      color: #fff;
+      padding: 18px 18px 22px;
+      position: sticky; top: 0; z-index: 10;
+      box-shadow: 0 2px 12px rgba(11, 95, 255, .18);
+    }
+    .header h1 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .header .sub { font-size: 12px; opacity: .85; margin-top: 4px; }
+    .header .updated { font-size: 12px; opacity: .85; margin-top: 2px; }
+
+    /* Main */
+    .main { padding: 16px 14px 24px; }
+
+    /* Rate card */
+    .rate-card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+      display: flex; align-items: center; gap: 14px;
+      cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+      border: 1px solid var(--border);
+    }
+    .rate-card:active { transform: scale(.98); }
+    .rate-flag {
+      width: 42px; height: 42px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+      background: var(--primary-soft);
+    }
+    .rate-info { flex: 1; min-width: 0; }
+    .rate-name { font-size: 15px; font-weight: 600; }
+    .rate-unit { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+    .rate-value { text-align: right; }
+    .rate-num { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
+    .rate-change { font-size: 12px; margin-top: 2px; }
+    .change-up { color: var(--up); }
+    .change-down { color: var(--down); }
+    .arrow { color: #b6b9c2; font-size: 18px; }
+
+    /* Skeleton */
+    .skeleton {
+      height: 18px; border-radius: 4px;
+      background: linear-gradient(90deg, #eef0f3 25%, #f6f7f9 37%, #eef0f3 63%);
+      background-size: 400% 100%;
+      animation: shimmer 1.4s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+    /* Error banner */
+    .banner {
+      background: #fff4e5; color: #b25900; border: 1px solid #ffd9a8;
+      padding: 10px 12px; border-radius: 10px; font-size: 12px; margin-bottom: 12px;
+    }
+
+    /* Detail view */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .detail-head {
+      background: var(--card);
+      padding: 18px 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: none; border: none; color: var(--primary);
+      font-size: 14px; cursor: pointer; padding: 4px 0; margin-bottom: 10px;
+    }
+    .detail-title { font-size: 16px; font-weight: 600; }
+    .detail-num { font-size: 30px; font-weight: 700; margin-top: 6px; letter-spacing: .5px; }
+    .detail-meta { font-size: 12px; color: var(--text-sub); margin-top: 4px; }
+
+    .chart-wrap { background: var(--card); margin: 12px 14px; border-radius: 14px; padding: 14px 10px 16px; border: 1px solid var(--border); }
+    .chart-wrap h3 { font-size: 13px; color: var(--text-sub); padding: 0 6px 8px; font-weight: 500; }
+    .chart-box { position: relative; height: 240px; }
+
+    .stat-row { display: flex; gap: 8px; margin: 12px 14px; }
+    .stat {
+      flex: 1; background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px;
+    }
+    .stat .label { font-size: 11px; color: var(--text-sub); }
+    .stat .val { font-size: 16px; font-weight: 600; margin-top: 4px; }
+
+    .note { font-size: 11px; color: var(--text-sub); text-align: center; margin: 18px 14px; line-height: 1.7; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 40px 20px; color: var(--text-sub); font-size: 13px; }
+
+    /* Refresh button */
+    .refresh-btn {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3);
+      color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 14px;
+      cursor: pointer; backdrop-filter: blur(4px);
+    }
+    .refresh-btn:active { background: rgba(255,255,255,.3); }
+    .refresh-btn.spin svg { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (min-width: 480px) {
+      .header h1 { font-size: 20px; }
+      .rate-num { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ============ Home View ============ -->
+    <div id="view-home" class="view active">
+      <div class="header">
+        <h1>人民币汇率 <span>¥</span></h1>
+        <div class="sub">实时中间价 · 数据来源：欧洲央行</div>
+        <div class="updated" id="updated">加载中…</div>
+        <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" aria-label="刷新">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+      </div>
+
+      <div class="main">
+        <div id="banner" class="banner" style="display:none;"></div>
+        <div id="rate-list">
+          <!-- skeleton -->
+          <div class="rate-card">
+            <div class="rate-flag">⌛</div>
+            <div class="rate-info"><div class="skeleton" style="width:80px"></div><div class="skeleton" style="width:120px;margin-top:8px"></div></div>
+            <div class="rate-value"><div class="skeleton" style="width:70px;margin-left:auto"></div></div>
+          </div>
+          <div class="rate-card">
+            <div class="rate-flag">⌛</div>
+            <div class="rate-info"><div class="skeleton" style="width:80px"></div><div class="skeleton" style="width:120px;margin-top:8px"></div></div>
+            <div class="rate-value"><div class="skeleton" style="width:70px;margin-left:auto"></div></div>
+          </div>
+          <div class="rate-card">
+            <div class="rate-flag">⌛</div>
+            <div class="rate-info"><div class="skeleton" style="width:80px"></div><div class="skeleton" style="width:120px;margin-top:8px"></div></div>
+            <div class="rate-value"><div class="skeleton" style="width:70px;margin-left:auto"></div></div>
+          </div>
+        </div>
+        <div class="note">点击任意汇率卡片可查看 30 天走势曲线<br/>本数据仅供参考，实际交易请以银行挂牌价为准。</div>
+      </div>
+    </div>
+
+    <!-- ============ Detail View ============ -->
+    <div id="view-detail" class="view">
+      <div class="detail-head">
+        <button class="back-btn" onclick="showHome()">← 返回</button>
+        <div class="detail-title" id="d-title">汇率走势</div>
+        <div class="detail-num" id="d-num">--</div>
+        <div class="detail-meta" id="d-meta">--</div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="label">30 天最高</div><div class="val" id="d-high">--</div></div>
+        <div class="stat"><div class="label">30 天最低</div><div class="val" id="d-low">--</div></div>
+        <div class="stat"><div class="label">30 天涨跌</div><div class="val" id="d-diff">--</div></div>
+      </div>
+
+      <div class="chart-wrap">
+        <h3>近 30 天汇率走势</h3>
+        <div class="chart-box"><canvas id="chart"></canvas></div>
+      </div>
+      <div class="note" id="d-note"></div>
+    </div>
+
+  </div>
+
+<script>
+  // ============ Config ============
+  // frankfurter.app: 1 unit of `base` = X units of `quote`
+  // 我们以"1 外币 = X 人民币"对外展示（日元特殊：100 日元 = X 人民币）
+  const PAIRS = [
+    { code: 'USD', base: 'USD', quote: 'CNY', unit: 1, flag: '🇺🇸', name: '美元', full: '人民币兑美元', unitText: '1 美元 =' },
+    { code: 'HKD', base: 'HKD', quote: 'CNY', unit: 1, flag: '🇭🇰', name: '港币', full: '人民币兑港币', unitText: '1 港币 =' },
+    { code: 'JPY', base: 'JPY', quote: 'CNY', unit: 100, flag: '🇯🇵', name: '日元', full: '人民币兑日元', unitText: '100 日元 =' }
+  ];
+
+  const API = 'https://api.frankfurter.app';
+  // state.current: { date, rates:{CNY,HKD,JPY}, stale? } 来自任一可用数据源
+  // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
+  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null };
+
+  // 内置静态兜底数据（当所有在线数据源都不可达时使用，标注"离线缓存"）
+  // 数值取自最近一次成功获取的 frankfurter.app 返回（USD=base）
+  const FALLBACK_CURRENT = {
+    date: '2026-08-20',
+    rates: { CNY: 6.7236, HKD: 7.8438, JPY: 158.76 },
+    stale: true
+  };
+
+  // ============ Utils ============
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n, d = 4) => Number(n).toFixed(d);
+  const fmtDate = (iso) => {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${y}/${m}/${d}`;
+  };
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const addDays = (iso, n) => {
+    const dt = new Date(iso + 'T00:00:00Z');
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
+  };
+
+  // ============ Fetch ============
+  async function fetchJSON(url, timeoutMs = 10000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal, mode: 'cors', credentials: 'omit' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  // 当前汇率：尝试多个免费数据源，任一成功即用；全部失败则用静态兜底
+  // 统一输出格式：{ date:'YYYY-MM-DD', rates:{CNY,HKD,JPY}, stale?:bool }
+  async function fetchCurrent() {
+    const sources = [
+      // 1) frankfurter.app（欧洲央行中间价，无 key）
+      async () => {
+        const j = await fetchJSON(`${API}/latest?base=USD&symbols=CNY,HKD,JPY`, 9000);
+        if (!j || !j.rates || !j.rates.CNY) throw new Error('frankfurter: bad data');
+        return { date: j.date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+      },
+      // 2) open.er-api.com（无 key）
+      async () => {
+        const j = await fetchJSON('https://open.er-api.com/v1/latest/quotes/USD.json', 9000);
+        if (!j || !j.rates || !j.rates.CNY) throw new Error('er-api: bad data');
+        const date = (j.date_update || j.time_last_update_utc || '').slice(0, 10) || todayISO();
+        return { date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+      },
+      // 3) jsdelivr 上的 fawazahmed0 currency-api 静态文件
+      async () => {
+        const j = await fetchJSON('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', 9000);
+        if (!j || !j.usd || !j.usd.cny) throw new Error('fawaz: bad data');
+        const date = (j.date || '').replace(/\//g, '-') || todayISO();
+        return { date, rates: { CNY: j.usd.cny, HKD: j.usd.hkd, JPY: j.usd.jpy } };
+      },
+      // 4) floatrates daily
+      async () => {
+        const j = await fetchJSON('https://www.floatrates.com/daily/usd.json', 9000);
+        if (!j || !j.cny) throw new Error('floatrates: bad data');
+        const date = (j.cny.date || todayISO()).slice(0, 10);
+        return { date, rates: { CNY: j.cny.rate, HKD: j.hkd.rate, JPY: j.jpy.rate } };
+      }
+    ];
+
+    let lastErr = null;
+    for (const src of sources) {
+      try {
+        const r = await src();
+        if (r && r.rates && r.rates.CNY && r.rates.HKD && r.rates.JPY) return r;
+      } catch (e) { lastErr = e; }
+    }
+    // 全部失败：返回静态兜底
+    return Object.assign({}, FALLBACK_CURRENT, { _err: lastErr ? lastErr.message : 'all sources failed' });
+  }
+
+  // 历史时间序列：仅 frankfurter 支持，失败返回 null（详情页降级提示）
+  async function fetchHistory(days = 35) {
+    const today = todayISO();
+    const from = addDays(today, -days);
+    const j = await fetchJSON(`${API}/${from}..${today}?base=USD&symbols=CNY,HKD,JPY`, 9000);
+    return j.rates || {};
+  }
+
+  // 把 USD->X 的汇率转换成"1 外币 = X 人民币"
+  function convertPair(pair, usdCny, basePerUsd) {
+    if (pair.base === 'USD') return usdCny;            // 1 USD = usdCny CNY
+    if (!basePerUsd) return null;                       // 1 base = usdCny/basePerUsd CNY
+    return usdCny / basePerUsd;
+  }
+
+  // 给定一日 USD 三元组，返回各货币对当前值
+  function ratesOfDay(pairRates) {
+    const out = {};
+    PAIRS.forEach(p => {
+      out[p.code] = convertPair(p, pairRates.CNY, pairRates[p.base]);
+    });
+    return out;
+  }
+
+  // ============ Render Home ============
+  function renderHome() {
+    const list = $('rate-list');
+    list.innerHTML = '';
+    if (!state.current) return;
+    const cur = ratesOfDay(state.current.rates);
+    const prev = state.prevRates || {};
+
+    PAIRS.forEach(p => {
+      const val = cur[p.code];
+      const display = val != null ? val * p.unit : null;
+      const decimals = 4;
+      let changeText = '暂无对比';
+      let changeCls = '';
+      const prevCur = prev[p.code];
+      if (prevCur != null && display != null) {
+        const prevDisp = prevCur * p.unit;
+        const diff = display - prevDisp;
+        const pct = (diff / prevDisp) * 100;
+        const arrow = diff > 0 ? '↑' : (diff < 0 ? '↓' : '—');
+        changeCls = diff > 0 ? 'change-up' : (diff < 0 ? 'change-down' : '');
+        changeText = `${arrow} ${Math.abs(diff).toFixed(decimals)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
+      }
+
+      const card = document.createElement('div');
+      card.className = 'rate-card';
+      card.onclick = () => showDetail(p);
+      card.innerHTML = `
+        <div class="rate-flag">${p.flag}</div>
+        <div class="rate-info">
+          <div class="rate-name">人民币兑${p.name}</div>
+          <div class="rate-unit">${p.unitText} <span style="color:#1c2330;font-weight:600">${display != null ? fmt(display, decimals) : '--'}</span> 人民币</div>
+        </div>
+        <div class="rate-value">
+          <div class="rate-num">${display != null ? fmt(display, decimals) : '--'}</div>
+          <div class="rate-change ${changeCls}">${changeText}</div>
+        </div>
+      `;
+      list.appendChild(card);
+    });
+
+    $('updated').textContent = `更新时间：${fmtDate(state.current.date)} · 数据：${state.current.stale ? '离线缓存' : '欧洲央行中间价'}`;
+    if (state.current.stale) {
+      showBanner('⚠️ 当前网络无法连接到在线汇率接口，已显示离线缓存数据（仅供参考）。请检查网络后下拉刷新。');
+    } else {
+      hideBanner();
+    }
+  }
+
+  function showBanner(msg) {
+    $('banner').style.display = 'block';
+    $('banner').textContent = msg;
+  }
+  function hideBanner() { $('banner').style.display = 'none'; }
+
+  // ============ Detail ============
+  function showHome() {
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    $('view-detail').classList.remove('active');
+    $('view-home').classList.add('active');
+    history.replaceState({}, '', '#');
+    window.scrollTo(0, 0);
+  }
+
+  async function showDetail(pair) {
+    $('view-home').classList.remove('active');
+    $('view-detail').classList.add('active');
+    history.replaceState({ pair: pair.code }, '', '#' + pair.code);
+    window.scrollTo(0, 0);
+
+    $('d-title').textContent = pair.full;
+    $('d-num').textContent = '加载中…';
+    $('d-meta').textContent = '';
+    $('d-high').textContent = '--';
+    $('d-low').textContent = '--';
+    $('d-diff').textContent = '--';
+    $('d-note').textContent = '';
+
+    // 重置 chart-box，确保多次进出始终是干净 canvas
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    document.querySelector('.chart-box').innerHTML = '<canvas id="chart"></canvas>';
+
+    await renderDetail(pair);
+  }
+
+  async function renderDetail(pair) {
+    const decimals = 4;
+
+    // 顶部当前汇率：优先用 state.current；没有则尝试历史最后一天
+    let curVal = null, curDate = null;
+    if (state.current) {
+      curVal = convertPair(pair, state.current.rates.CNY, state.current.rates[pair.base]);
+      curDate = state.current.date;
+    }
+    if (curVal != null) {
+      const disp = curVal * pair.unit;
+      $('d-num').textContent = fmt(disp, decimals);
+      $('d-meta').textContent = `${pair.unitText} 人民币${curDate ? ' · 截至 ' + fmtDate(curDate) : ''}`;
+    } else {
+      $('d-num').textContent = '--';
+      $('d-meta').textContent = '当前汇率加载失败';
+    }
+
+    // 历史曲线：若 state.history 不足，尝试现场拉一次
+    let history = state.history;
+    if (!history || Object.keys(history).length < 2) {
+      $('d-note').textContent = '正在加载历史曲线数据…';
+      try {
+        history = await fetchHistory(35);
+        state.history = history;
+      } catch (e) {
+        history = null;
+      }
+    }
+
+    if (!history || Object.keys(history).length < 2) {
+      $('d-high').textContent = '--';
+      $('d-low').textContent = '--';
+      $('d-diff').textContent = '--';
+      $('d-note').textContent = '⚠️ 历史曲线数据暂时无法获取（接口超时或被拦截）。当前汇率可正常显示，请稍后重试。';
+      if (state.chart) { state.chart.destroy(); state.chart = null; }
+      const box = document.querySelector('.chart-box');
+      box.innerHTML = '<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center;">暂无历史数据</div><canvas id="chart" style="display:none"></canvas>';
+      return;
+    }
+
+    const days = Object.keys(history).sort();
+    const recent = days.slice(-30);
+    const series = recent.map(d => {
+      const r = history[d];
+      const v = convertPair(pair, r.CNY, r[pair.base]);
+      return { date: d, value: v != null ? v * pair.unit : null };
+    }).filter(x => x.value != null);
+
+    if (series.length < 2) {
+      $('d-note').textContent = '⚠️ 该货币对历史数据不足，无法绘制曲线。';
+      return;
+    }
+
+    const values = series.map(s => s.value);
+    const high = Math.max(...values);
+    const low = Math.min(...values);
+    const first = values[0];
+    const lastV = values[values.length - 1];
+    const diff = lastV - first;
+    const pct = (diff / first) * 100;
+
+    // 若顶部当前值缺失，用历史最后一天补上
+    if (curVal == null) {
+      $('d-num').textContent = fmt(lastV, decimals);
+      $('d-meta').textContent = `${pair.unitText} 人民币 · 截至 ${fmtDate(series[series.length - 1].date)}`;
+    }
+    $('d-high').textContent = fmt(high, decimals);
+    $('d-low').textContent = fmt(low, decimals);
+    const cls = diff >= 0 ? 'change-up' : 'change-down';
+    const arrow = diff > 0 ? '↑' : (diff < 0 ? '↓' : '—');
+    $('d-diff').innerHTML = `<span class="${cls}">${arrow} ${Math.abs(diff).toFixed(decimals)}<br/><span style="font-size:11px">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span></span>`;
+    $('d-note').textContent = `本走势为 ${series.length} 个交易日数据 · 仅供参考`;
+
+    // 若之前因历史缺失替换过 canvas，恢复一个干净的 canvas
+    if (!$('chart') || $('chart').tagName !== 'CANVAS') {
+      const parent = document.querySelector('.chart-box');
+      parent.innerHTML = '<canvas id="chart"></canvas>';
+    }
+    drawChart(pair, series);
+  }
+
+  function drawChart(pair, series) {
+    const ctx = $('chart').getContext('2d');
+    if (state.chart) state.chart.destroy();
+    const labels = series.map(s => fmtDate(s.date).slice(5)); // MM/DD
+    const data = series.map(s => Number(s.value.toFixed(6)));
+
+    // 颜色根据首尾
+    const isUp = data[data.length - 1] >= data[0];
+    const color = isUp ? '#d9362d' : '#1a8a3f';
+    const fill = isUp ? 'rgba(217,54,45,.12)' : 'rgba(26,138,63,.12)';
+
+    state.chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: `${pair.full}`,
+          data: data,
+          borderColor: color,
+          backgroundColor: fill,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          pointHoverBackgroundColor: color,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0].label,
+              label: (item) => `汇率: ${Number(item.parsed.y).toFixed(4)}`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#9aa0a9', maxTicksLimit: 6 } },
+          y: { grid: { color: '#f0f1f4' }, ticks: { font: { size: 10 }, color: '#9aa0a9', callback: (v) => Number(v).toFixed(4) } }
+        }
+      }
+    });
+  }
+
+  // ============ Init ============
+  async function init() {
+    // 1. 主线：拉当前汇率，立即渲染主页（核心需求）
+    try {
+      state.current = await fetchCurrent();
+      renderHome();
+    } catch (e) {
+      console.error('current rates failed', e);
+      hideBanner();
+      $('rate-list').innerHTML = `<div class="empty">⚠️ 当前汇率加载失败：${e.message}<br/><br/><button class="back-btn" onclick="location.reload()" style="font-size:14px">重试</button></div>`;
+      $('updated').textContent = '加载失败，请检查网络后重试';
+      return; // 主线都失败就没必要继续
+    }
+
+    // 2. 副线：异步拉历史（用于涨跌与曲线），失败时静默降级
+    await loadHistorySilently();
+    if (state.prevRates) renderHome(); // 有了对比数据，重新渲染一次以显示涨跌
+
+    // 3. 定时刷新当前汇率（每 5 分钟）
+    setTimeout(autoRefresh, 5 * 60 * 1000);
+  }
+
+  async function loadHistorySilently() {
+    try {
+      const history = await fetchHistory(35);
+      const days = Object.keys(history).sort();
+      if (days.length >= 2) {
+        state.history = history;
+        // prevRates：用历史倒数第二天的数据作为对比
+        const prevDay = days[days.length - 2];
+        state.prevRates = ratesOfDay(history[prevDay]);
+      }
+    } catch (e) {
+      console.warn('history rates failed (non-fatal)', e);
+    }
+  }
+
+  async function autoRefresh() {
+    try {
+      state.current = await fetchCurrent();
+      // 偶尔重刷历史（每 6 次刷新刷一次，约 30 分钟）
+      if (!state.history || Math.random() < 0.15) {
+        await loadHistorySilently();
+      }
+      if ($('view-home').classList.contains('active')) {
+        renderHome();
+      } else if ($('view-detail').classList.contains('active')) {
+        // 详情页打开时，刷新当前值显示
+        // （不主动重画曲线，避免用户交互被打断）
+      }
+    } catch (e) { /* 静默 */ }
+    setTimeout(autoRefresh, 5 * 60 * 1000);
+  }
+
+  // 手动刷新（按钮触发）
+  async function manualRefresh() {
+    const btn = $('refresh-btn');
+    if (btn) btn.classList.add('spin');
+    try {
+      state.current = await fetchCurrent();
+      await loadHistorySilently(); // 强制重试历史
+      if ($('view-home').classList.contains('active')) {
+        renderHome();
+      } else if ($('view-detail').classList.contains('active')) {
+        // 在详情页则刷新当前值（曲线不主动重画）
+        if (state.current) {
+          // 找到当前 pair 并刷新顶部数字
+          // 简单处理：让顶部数字更新
+        }
+      }
+    } catch (e) { /* 静默 */ }
+    finally {
+      if (btn) setTimeout(() => btn.classList.remove('spin'), 600);
+    }
+  }
+  window.manualRefresh = manualRefresh;
+
+  // hash 路由
+  window.addEventListener('hashchange', () => {
+    const code = location.hash.replace('#', '').toUpperCase();
+    if (!code) { showHome(); return; }
+    const pair = PAIRS.find(p => p.code === code);
+    if (pair) showDetail(pair);
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const code = location.hash.replace('#', '').toUpperCase();
+    init().then(() => {
+      if (code) {
+        const pair = PAIRS.find(p => p.code === code);
+        if (pair) showDetail(pair);
+      }
+    });
+  });
+</script>
+</body>
+</html>
