@@ -115,6 +115,23 @@
     .range-tab { background: var(--bg); border: 1px solid var(--border); color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 14px; cursor: pointer; transition: background .12s ease; }
     .range-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
     .chart-box { position: relative; height: 240px; }
+    /* 换汇记录区 */
+    .fx-section { background: var(--card); margin: 12px 14px; border-radius: 14px; padding: 14px; border: 1px solid var(--border); }
+    .fx-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .fx-head h3 { font-size: 13px; color: var(--text-sub); font-weight: 500; }
+    .fx-add-btn { background: var(--primary); color: #fff; border: none; font-size: 12px; padding: 6px 14px; border-radius: 14px; cursor: pointer; }
+    .fx-form { display: none; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .fx-form input { flex: 1; min-width: 70px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+    .fx-form button { padding: 7px 12px; border: none; border-radius: 8px; font-size: 12px; cursor: pointer; }
+    .fx-form .fx-save { background: var(--primary); color: #fff; }
+    .fx-form .fx-cancel { background: var(--bg); color: var(--text-sub); }
+    .fx-list { display: flex; flex-direction: column; gap: 6px; }
+    .fx-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: 12px; }
+    .fx-item-info { flex: 1; }
+    .fx-item-amount { font-weight: 600; color: var(--text); }
+    .fx-item-rate { color: var(--text-sub); margin-top: 2px; }
+    .fx-item-date { color: var(--text-sub); font-size: 11px; }
+    .fx-del { background: transparent; border: none; color: var(--up); cursor: pointer; font-size: 16px; padding: 0 4px; }
 
     .stat-row { display: flex; gap: 8px; margin: 12px 14px; }
     .stat {
@@ -210,6 +227,21 @@
         <div class="chart-box"><canvas id="chart"></canvas></div>
       </div>
       <div class="note" id="d-note"></div>
+
+      <div class="fx-section">
+        <div class="fx-head">
+          <h3>换汇记录</h3>
+          <button class="fx-add-btn" onclick="showAddFxForm()">+ 添加</button>
+        </div>
+        <div class="fx-form" id="fx-form">
+          <input type="date" id="fx-date" />
+          <input type="number" id="fx-amount" placeholder="外币金额" step="0.01" min="0" inputmode="decimal" />
+          <input type="number" id="fx-rate" placeholder="成交汇率" step="0.0001" min="0" inputmode="decimal" />
+          <button class="fx-save" onclick="saveFxRecord()">保存</button>
+          <button class="fx-cancel" onclick="hideAddFxForm()">取消</button>
+        </div>
+        <div class="fx-list" id="fx-list"></div>
+      </div>
     </div>
 
   </div>
@@ -490,6 +522,10 @@
     if (state.chart) { state.chart.destroy(); state.chart = null; }
     document.querySelector('.chart-box').innerHTML = '<canvas id="chart"></canvas>';
 
+    // 隐藏换汇表单（防止上次残留）+ 渲染当前货币对的换汇记录列表
+    hideAddFxForm();
+    renderFxList(pair);
+
     await renderDetail(pair);
   }
 
@@ -503,6 +539,78 @@
     if (state.chart) { state.chart.destroy(); state.chart = null; }
     document.querySelector('.chart-box').innerHTML = '<canvas id="chart"></canvas>';
     await renderDetail(state.currentPair, range);
+  }
+
+  // ============ 换汇记录（localStorage 按货币对存储）============
+  function getFxRecords(pairCode) {
+    try { return JSON.parse(localStorage.getItem('fx_' + pairCode) || '[]'); }
+    catch (e) { return []; }
+  }
+  function saveFxRecords(pairCode, arr) {
+    localStorage.setItem('fx_' + pairCode, JSON.stringify(arr));
+  }
+  function showAddFxForm() {
+    const pair = state.currentPair;
+    if (!pair) return;
+    $('fx-form').style.display = 'flex';
+    $('fx-date').value = todayISO();
+    if (state.current) {
+      const v = convertPair(pair, state.current.rates.CNY, state.current.rates[pair.base]);
+      if (v != null) $('fx-rate').value = (v * pair.unit).toFixed(4);
+    }
+    $('fx-amount').placeholder = pair.name + '金额';
+    $('fx-rate').placeholder = pair.unitText.replace('=', '=?');
+    $('fx-amount').focus();
+  }
+  function hideAddFxForm() {
+    $('fx-form').style.display = 'none';
+    $('fx-amount').value = '';
+    $('fx-rate').value = '';
+  }
+  async function saveFxRecord() {
+    const pair = state.currentPair;
+    if (!pair) return;
+    const date = $('fx-date').value;
+    const amount = parseFloat($('fx-amount').value);
+    const rate = parseFloat($('fx-rate').value);
+    if (!date || !amount || !rate || amount <= 0 || rate <= 0) {
+      alert('请填写日期、金额和汇率（均需大于0）');
+      return;
+    }
+    const recs = getFxRecords(pair.code);
+    recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date, amount, rate });
+    recs.sort((a, b) => a.date.localeCompare(b.date));
+    saveFxRecords(pair.code, recs);
+    hideAddFxForm();
+    renderFxList(pair);
+    await renderDetail(pair, state.currentRange);
+  }
+  async function deleteFxRecord(id) {
+    const pair = state.currentPair;
+    if (!pair) return;
+    const recs = getFxRecords(pair.code).filter(r => r.id !== id);
+    saveFxRecords(pair.code, recs);
+    renderFxList(pair);
+    await renderDetail(pair, state.currentRange);
+  }
+  function renderFxList(pair) {
+    const recs = getFxRecords(pair.code);
+    const list = $('fx-list');
+    if (recs.length === 0) {
+      list.innerHTML = '<div class="fx-empty">暂无换汇记录，点"+ 添加"记录第一笔</div>';
+      return;
+    }
+    list.innerHTML = recs.map(r => {
+      const cny = (r.amount * r.rate / pair.unit).toFixed(2);
+      return `<div class="fx-item">
+        <div class="fx-item-info">
+          <div class="fx-item-amount">${r.amount} ${pair.name} → ${cny} 人民币</div>
+          <div class="fx-item-rate">${pair.unitText} ${r.rate.toFixed(4)}</div>
+          <div class="fx-item-date">${fmtDate(r.date)}</div>
+        </div>
+        <button class="fx-del" onclick="deleteFxRecord('${r.id}')">×</button>
+      </div>`;
+    }).join('');
   }
 
   async function renderDetail(pair, range) {
@@ -619,6 +727,16 @@
     const labels = series.map(s => longRange ? s.date.slice(0, 7) : fmtDate(s.date).slice(5));
     const data = series.map(s => Number(s.value.toFixed(6)));
 
+    // 换汇记录点：匹配 series 日期，有记录的填 rate（与图同单位）
+    const fxRecs = getFxRecords(pair.code);
+    const recsByDate = {};
+    fxRecs.forEach(r => { recsByDate[r.date] = r; });
+    const fxData = series.map(s => {
+      const rec = recsByDate[s.date];
+      return rec ? Number(rec.rate) : null;
+    });
+    const hasFx = fxData.some(v => v != null);
+
     // 颜色根据首尾
     const isUp = data[data.length - 1] >= data[0];
     const color = isUp ? '#d9362d' : '#1a8a3f';
@@ -639,7 +757,16 @@
           pointRadius: 0,
           pointHoverRadius: 4,
           pointHoverBackgroundColor: color,
-        }]
+        }, hasFx ? {
+          label: '换汇记录',
+          data: fxData,
+          borderColor: '#ff9800',
+          backgroundColor: '#ff9800',
+          pointRadius: 6,
+          pointHoverRadius: 9,
+          pointStyle: 'rectRot',
+          showLine: false,
+        } : null].filter(Boolean)
       },
       options: {
         responsive: true,
@@ -650,7 +777,14 @@
           tooltip: {
             callbacks: {
               title: (items) => items[0].label,
-              label: (item) => `汇率: ${Number(item.parsed.y).toFixed(4)}`
+              label: (item) => {
+                if (item.datasetIndex === 1) {
+                  const s = series[item.dataIndex];
+                  const rec = s ? recsByDate[s.date] : null;
+                  return rec ? `换汇 ${rec.amount} ${pair.name} @ ${rec.rate.toFixed(4)}` : '换汇';
+                }
+                return `汇率: ${Number(item.parsed.y).toFixed(4)}`;
+              }
             }
           }
         },
