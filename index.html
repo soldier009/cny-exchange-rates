@@ -298,6 +298,18 @@
   const cnNow = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false });
   const toCNDate = (d) => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
   const todayISO = () => toCNDate(new Date());
+  // 外汇市场周末（北京时间周六/周日）休市
+  const isMarketOpen = () => {
+    const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai', weekday: 'short' });
+    return day !== 'Sat' && day !== 'Sun';
+  };
+  // Unix 秒级 timestamp 转北京时间 YYYY-MM-DD HH:MM
+  const fmtDateTimeTs = (ts) => {
+    const d = new Date(ts * 1000);
+    const date = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+    const time = d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false }).slice(0, 5);
+    return `${date} ${time}`;
+  };
   const addDays = (iso, n) => {
     const dt = new Date(iso + 'T00:00:00Z');
     dt.setUTCDate(dt.getUTCDate() + n);
@@ -325,8 +337,9 @@
       async () => {
         const j = await fetchJSON('https://api.exchangerate.fun/latest?base=USD', 9000);
         if (!j || !j.rates || !j.rates.CNY) throw new Error('exchangerate.fun: bad data');
-        const date = toCNDate(new Date((j.timestamp || Date.now() / 1000) * 1000));
-        return { date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+        const ts = (j.timestamp || Date.now() / 1000);
+        const date = toCNDate(new Date(ts * 1000));
+        return { date, ts, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
       },
       // 2) frankfurter.dev（欧洲央行中间价，无 key，也用于历史曲线）
       async () => {
@@ -434,7 +447,9 @@
       list.appendChild(card);
     });
 
-    $('updated').textContent = `数据日期：${fmtDate(state.current.date)} · ${state.current.stale ? '离线缓存' : '市场汇率'} · 本页刷新(北京) ${cnNow()} · 第${state.refreshCount}次`;
+    const mktStatus = isMarketOpen() ? '市场开市' : '市场休市(周末)';
+    const dataTime = state.current.ts ? fmtDateTimeTs(state.current.ts) : (fmtDate(state.current.date) + ' 日线');
+    $('updated').textContent = `${mktStatus} · 数据：${dataTime}${state.current.stale ? ' · 离线缓存' : ''} · 刷新 ${cnNow()} · 第${state.refreshCount}次`;
     if (state.current.stale) {
       showBanner('⚠️ 当前网络无法连接到在线汇率接口，已显示离线缓存数据（仅供参考）。请检查网络后下拉刷新。');
     } else {
