@@ -634,19 +634,30 @@
         <button class="fx-del" onclick="deleteFxRecord('${r.id}')">×</button>
       </div>`;
     }).join('');
-    // 合计统计：总换汇金额 + 按金额加权的平均汇率
-    const total = recs.reduce((s, r) => s + Number(r.amount), 0);
-    const totalCny = recs.reduce((s, r) => s + r.amount * r.rate / pair.unit, 0);
-    const weightedRate = total > 0 ? recs.reduce((s, r) => s + r.rate * r.amount, 0) / total : 0;
-    $('fx-summary').innerHTML = `
-      <div class="fx-summary-row">
-        <span class="fx-summary-label">合计换汇</span>
-        <span class="fx-summary-value">${total.toFixed(2)} ${pair.name} → ${totalCny.toFixed(2)} 人民币</span>
-      </div>
-      <div class="fx-summary-row" style="margin-top:4px">
-        <span class="fx-summary-label">平均汇率(按金额加权)</span>
-        <span class="fx-summary-value">${pair.unitText} ${weightedRate.toFixed(4)}</span>
-      </div>`;
+    // 分购汇/结汇统计 + 未结汇余额
+    const buys = recs.filter(r => r.dir !== 'sell');
+    const sells = recs.filter(r => r.dir === 'sell');
+    const calc = (arr) => {
+      const t = arr.reduce((s, r) => s + Number(r.amount), 0);
+      const c = arr.reduce((s, r) => s + r.amount * r.rate / pair.unit, 0);
+      const r = t > 0 ? arr.reduce((s, x) => s + x.rate * x.amount, 0) / t : 0;
+      return { t, c, r };
+    };
+    const B = calc(buys), S = calc(sells);
+    const remain = B.t - S.t;
+    let h = '';
+    if (B.t > 0) {
+      h += `<div class="fx-summary-row"><span class="fx-summary-label">购汇合计</span><span class="fx-summary-value">${B.t.toFixed(2)} ${pair.name} → ${B.c.toFixed(2)} 人民币 · 均价 ${pair.unitText} ${B.r.toFixed(4)}</span></div>`;
+    }
+    if (S.t > 0) {
+      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">结汇合计</span><span class="fx-summary-value">${S.t.toFixed(2)} ${pair.name} → ${S.c.toFixed(2)} 人民币 · 均价 ${pair.unitText} ${S.r.toFixed(4)}</span></div>`;
+    }
+    if (remain > 0) {
+      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">未结汇余额</span><span class="fx-summary-value">${remain.toFixed(2)} ${pair.name} · 成本均价 ${pair.unitText} ${B.r.toFixed(4)}</span></div>`;
+    } else if (remain < 0) {
+      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">超结汇</span><span class="fx-summary-value">${Math.abs(remain).toFixed(2)} ${pair.name}</span></div>`;
+    }
+    $('fx-summary').innerHTML = h;
   }
 
   // 导出换汇记录为 CSV（带 UTF-8 BOM，Excel/WPS 双击直接打开为表格，中文不乱码）
