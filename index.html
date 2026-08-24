@@ -151,7 +151,7 @@
     <div id="view-home" class="view active">
       <div class="header">
         <h1>人民币汇率 <span>¥</span></h1>
-        <div class="sub">实时中间价 · 每 60 秒自动刷新 · 欧洲央行</div>
+        <div class="sub">实时汇率 · 每 60 秒自动刷新 · 市场价每小时更新</div>
         <div class="updated" id="updated">加载中…</div>
         <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" aria-label="刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -178,7 +178,7 @@
             <div class="rate-value"><div class="skeleton" style="width:70px;margin-left:auto"></div></div>
           </div>
         </div>
-        <div class="note">点击任意汇率卡片可查看 30 天走势曲线<br/>欧洲央行中间价每个工作日约 21:00 后更新，周末与节假日不更新<br/>本数据仅供参考，实际交易请以银行挂牌价为准。</div>
+        <div class="note">点击任意汇率卡片可查看 30 天走势曲线<br/>当前汇率：市场汇率每小时更新 · 走势曲线：欧洲央行中间价<br/>本数据仅供参考，实际交易请以银行挂牌价为准。</div>
       </div>
     </div>
 
@@ -219,7 +219,7 @@
   const API = 'https://api.frankfurter.dev/v1';
   // state.current: { date, rates:{CNY,HKD,JPY}, stale? } 来自任一可用数据源
   // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
-  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null };
+  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null, refreshCount: 0 };
 
   // 内置静态兜底数据（当所有在线数据源都不可达时使用，标注"离线缓存"）
   // 数值取自最近一次成功获取的 frankfurter.app 返回（USD=base）
@@ -261,7 +261,14 @@
   // 统一输出格式：{ date:'YYYY-MM-DD', rates:{CNY,HKD,JPY}, stale?:bool }
   async function fetchCurrent() {
     const sources = [
-      // 1) frankfurter.app（欧洲央行中间价，无 key）
+      // 1) exchangerate.fun（每小时更新市场汇率，无 key，公益 10 年承诺）
+      async () => {
+        const j = await fetchJSON('https://api.exchangerate.fun/latest?base=USD', 9000);
+        if (!j || !j.rates || !j.rates.CNY) throw new Error('exchangerate.fun: bad data');
+        const date = new Date((j.timestamp || Date.now() / 1000) * 1000).toISOString().slice(0, 10);
+        return { date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+      },
+      // 2) frankfurter.dev（欧洲央行中间价，无 key，也用于历史曲线）
       async () => {
         const j = await fetchJSON(`${API}/latest?base=USD&symbols=CNY,HKD,JPY`, 9000);
         if (!j || !j.rates || !j.rates.CNY) throw new Error('frankfurter: bad data');
@@ -366,7 +373,7 @@
       list.appendChild(card);
     });
 
-    $('updated').textContent = `更新时间：${fmtDate(state.current.date)} · ${state.current.stale ? '离线缓存' : '欧洲央行中间价'} · 刷新 ${new Date().toTimeString().slice(0,5)}`;
+    $('updated').textContent = `数据日期：${fmtDate(state.current.date)} · ${state.current.stale ? '离线缓存' : '市场汇率'} · 本页刷新 ${new Date().toTimeString().slice(0,8)} · 第${state.refreshCount}次`;
     if (state.current.stale) {
       showBanner('⚠️ 当前网络无法连接到在线汇率接口，已显示离线缓存数据（仅供参考）。请检查网络后下拉刷新。');
     } else {
@@ -546,6 +553,7 @@
     // 1. 主线：拉当前汇率，立即渲染主页（核心需求）
     try {
       state.current = await fetchCurrent();
+      state.refreshCount = 1;
       renderHome();
     } catch (e) {
       console.error('current rates failed', e);
@@ -579,6 +587,7 @@
   }
 
   async function autoRefresh() {
+    state.refreshCount++;
     try {
       state.current = await fetchCurrent();
       // 每次自动刷新都尝试重拉历史（保证曲线最新，失败静默）
@@ -592,11 +601,12 @@
         // （不主动重画曲线，避免用户交互被打断）
       }
     } catch (e) { /* 静默 */ }
-    setTimeout(autoRefresh, 5 * 60 * 1000);
+    setTimeout(autoRefresh, 60 * 1000);
   }
 
   // 手动刷新（按钮触发）
   async function manualRefresh() {
+    state.refreshCount++;
     const btn = $('refresh-btn');
     if (btn) btn.classList.add('spin');
     $('updated').textContent = '刷新中…';
