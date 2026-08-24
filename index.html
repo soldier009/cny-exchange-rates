@@ -111,6 +111,9 @@
 
     .chart-wrap { background: var(--card); margin: 12px 14px; border-radius: 14px; padding: 14px 10px 16px; border: 1px solid var(--border); }
     .chart-wrap h3 { font-size: 13px; color: var(--text-sub); padding: 0 6px 8px; font-weight: 500; }
+    .range-tabs { display: flex; gap: 6px; padding: 0 6px 10px; }
+    .range-tab { background: var(--bg); border: 1px solid var(--border); color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 14px; cursor: pointer; transition: background .12s ease; }
+    .range-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
     .chart-box { position: relative; height: 240px; }
 
     .stat-row { display: flex; gap: 8px; margin: 12px 14px; }
@@ -197,7 +200,12 @@
       </div>
 
       <div class="chart-wrap">
-        <h3>近 30 天汇率走势</h3>
+        <div class="range-tabs">
+          <button class="range-tab active" data-range="30" onclick="switchRange(30)">30天</button>
+          <button class="range-tab" data-range="365" onclick="switchRange(365)">1年</button>
+          <button class="range-tab" data-range="1095" onclick="switchRange(1095)">3年</button>
+        </div>
+        <h3 id="chart-title">近 30 天汇率走势</h3>
         <div class="chart-box"><canvas id="chart"></canvas></div>
       </div>
       <div class="note" id="d-note"></div>
@@ -267,7 +275,7 @@
   const API = 'https://api.frankfurter.dev/v1';
   // state.current: { date, rates:{CNY,HKD,JPY}, stale? } 来自任一可用数据源
   // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
-  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null, refreshCount: 0, chartReady: null };
+  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null, refreshCount: 0, chartReady: null, historyByRange: {}, currentRange: 30, currentPair: null };
 
   // 内置静态兜底数据（当所有在线数据源都不可达时使用，标注"离线缓存"）
   // 数值取自最近一次成功获取的 frankfurter.app 返回（USD=base）
@@ -363,7 +371,8 @@
   async function fetchHistory(days = 35) {
     const today = todayISO();
     const from = addDays(today, -days);
-    const j = await fetchJSON(`${API}/${from}..${today}?base=USD&symbols=CNY,HKD,JPY`, 9000);
+    const timeout = days > 400 ? 20000 : 9000;
+    const j = await fetchJSON(`${API}/${from}..${today}?base=USD&symbols=CNY,HKD,JPY`, timeout);
     return j.rates || {};
   }
 
@@ -468,8 +477,37 @@
     await renderDetail(pair);
   }
 
-  async function renderDetail(pair) {
+  async function switchRange(range) {
+    if (!state.currentPair) return;
+    state.currentRange = range;
+    $('d-high').textContent = '--';
+    $('d-low').textContent = '--';
+    $('d-diff').textContent = '--';
+    $('d-note').textContent = '';
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    document.querySelector('.chart-box').innerHTML = '<canvas id="chart"></canvas>';
+    await renderDetail(state.currentPair, range);
+  }
+
+  async function renderDetail(pair, range) {
+    range = range || state.currentRange || 30;
+    state.currentRange = range;
+    state.currentPair = pair;
     const decimals = 4;
+
+    // 更新范围按钮 active 状态、标题、统计标签
+    const rangeLabel = range === 30 ? '30 天' : (range >= 1095 ? '3 年' : '1 年');
+    document.querySelectorAll('.range-tab').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.range) === range);
+    });
+    const titleEl = $('chart-title');
+    if (titleEl) titleEl.textContent = `近 ${rangeLabel} 汇率走势`;
+    const labels = document.querySelectorAll('.stat .label');
+    if (labels.length >= 3) {
+      labels[0].textContent = `${rangeLabel}最高`;
+      labels[1].textContent = `${rangeLabel}最低`;
+      labels[2].textContent = `${rangeLabel}涨跌`;
+    }
 
     // 顶部当前汇率：优先用 state.current；没有则尝试历史最后一天
     let curVal = null, curDate = null;
@@ -486,13 +524,14 @@
       $('d-meta').textContent = '当前汇率加载失败';
     }
 
-    // 历史曲线：若 state.history 不足，尝试现场拉一次
-    let history = state.history;
+    // 历史曲线：按 range 缓存，避免重复请求
+    let history = state.historyByRange[range];
     if (!history || Object.keys(history).length < 2) {
-      $('d-note').textContent = '正在加载历史曲线数据…';
+      $('d-note').textContent = `正在加载近 ${rangeLabel} 历史数据…`;
       try {
-        history = await fetchHistory(35);
-        state.history = history;
+        history = await fetchHistory(range);
+        state.historyByRange[range] = history;
+        if (range === 30) state.history = history;
       } catch (e) {
         history = null;
       }
@@ -510,7 +549,7 @@
     }
 
     const days = Object.keys(history).sort();
-    const recent = days.slice(-30);
+    const recent = days.slice(-Math.min(range, days.length));
     const series = recent.map(d => {
       const r = history[d];
       const v = convertPair(pair, r.CNY, r[pair.base]);
@@ -559,7 +598,9 @@
     }
     const ctx = $('chart').getContext('2d');
     if (state.chart) state.chart.destroy();
-    const labels = series.map(s => fmtDate(s.date).slice(5)); // MM/DD
+    // 长范围(1年/3年)用 YYYY-MM 避免跨年标签重复，30天用 MM/DD
+    const longRange = series.length > 100;
+    const labels = series.map(s => longRange ? s.date.slice(0, 7) : fmtDate(s.date).slice(5));
     const data = series.map(s => Number(s.value.toFixed(6)));
 
     // 颜色根据首尾
@@ -634,6 +675,7 @@
       const days = Object.keys(history).sort();
       if (days.length >= 2) {
         state.history = history;
+        state.historyByRange[30] = history;
         // prevRates：用历史倒数第二天的数据作为对比
         const prevDay = days[days.length - 2];
         state.prevRates = ratesOfDay(history[prevDay]);
