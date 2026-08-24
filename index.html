@@ -129,6 +129,10 @@
     .fx-form .fx-save { background: var(--primary); color: #fff; }
     .fx-form .fx-cancel { background: var(--bg); color: var(--text-sub); }
     .fx-list { display: flex; flex-direction: column; gap: 6px; }
+    .fx-summary { margin-top: 10px; padding: 10px; background: var(--primary-soft); border-radius: 8px; font-size: 12px; }
+    .fx-summary-row { display: flex; justify-content: space-between; align-items: center; }
+    .fx-summary-label { color: var(--text-sub); }
+    .fx-summary-value { font-weight: 600; color: var(--text); }
     .fx-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: 12px; }
     .fx-item-info { flex: 1; }
     .fx-item-amount { font-weight: 600; color: var(--text); }
@@ -247,6 +251,7 @@
           <button class="fx-cancel" onclick="hideAddFxForm()">取消</button>
         </div>
         <div class="fx-list" id="fx-list"></div>
+        <div class="fx-summary" id="fx-summary"></div>
       </div>
     </div>
 
@@ -604,6 +609,7 @@
     const list = $('fx-list');
     if (recs.length === 0) {
       list.innerHTML = '<div class="fx-empty">暂无换汇记录，点"+ 添加"记录第一笔</div>';
+      $('fx-summary').innerHTML = '';
       return;
     }
     list.innerHTML = recs.map(r => {
@@ -617,6 +623,19 @@
         <button class="fx-del" onclick="deleteFxRecord('${r.id}')">×</button>
       </div>`;
     }).join('');
+    // 合计统计：总换汇金额 + 按金额加权的平均汇率
+    const total = recs.reduce((s, r) => s + Number(r.amount), 0);
+    const totalCny = recs.reduce((s, r) => s + r.amount * r.rate / pair.unit, 0);
+    const weightedRate = total > 0 ? recs.reduce((s, r) => s + r.rate * r.amount, 0) / total : 0;
+    $('fx-summary').innerHTML = `
+      <div class="fx-summary-row">
+        <span class="fx-summary-label">合计换汇</span>
+        <span class="fx-summary-value">${total.toFixed(2)} ${pair.name} → ${totalCny.toFixed(2)} 人民币</span>
+      </div>
+      <div class="fx-summary-row" style="margin-top:4px">
+        <span class="fx-summary-label">平均汇率(按金额加权)</span>
+        <span class="fx-summary-value">${pair.unitText} ${weightedRate.toFixed(4)}</span>
+      </div>`;
   }
 
   // 导出换汇记录为 CSV（带 UTF-8 BOM，Excel/WPS 双击直接打开为表格，中文不乱码）
