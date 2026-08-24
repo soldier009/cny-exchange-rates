@@ -204,6 +204,7 @@
           <button class="range-tab active" data-range="30" onclick="switchRange(30)">30天</button>
           <button class="range-tab" data-range="365" onclick="switchRange(365)">1年</button>
           <button class="range-tab" data-range="1095" onclick="switchRange(1095)">3年</button>
+          <button class="range-tab" data-range="3650" onclick="switchRange(3650)">10年</button>
         </div>
         <h3 id="chart-title">近 30 天汇率走势</h3>
         <div class="chart-box"><canvas id="chart"></canvas></div>
@@ -371,7 +372,7 @@
   async function fetchHistory(days = 35) {
     const today = todayISO();
     const from = addDays(today, -days);
-    const timeout = days > 400 ? 20000 : 9000;
+    const timeout = days > 2000 ? 30000 : (days > 400 ? 20000 : 9000);
     const j = await fetchJSON(`${API}/${from}..${today}?base=USD&symbols=CNY,HKD,JPY`, timeout);
     return j.rates || {};
   }
@@ -496,7 +497,7 @@
     const decimals = 4;
 
     // 更新范围按钮 active 状态、标题、统计标签
-    const rangeLabel = range === 30 ? '30 天' : (range >= 1095 ? '3 年' : '1 年');
+    const rangeLabel = range === 30 ? '30 天' : (range >= 3650 ? '10 年' : (range >= 1095 ? '3 年' : '1 年'));
     document.querySelectorAll('.range-tab').forEach(b => {
       b.classList.toggle('active', Number(b.dataset.range) === range);
     });
