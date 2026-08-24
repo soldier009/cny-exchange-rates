@@ -125,6 +125,7 @@
     .fx-empty { color: var(--text-sub); font-size: 12px; text-align: center; padding: 8px; }
     .fx-form { display: none; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
     .fx-form input { flex: 1; min-width: 70px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+    .fx-form select { padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--card); }
     .fx-form button { padding: 7px 12px; border: none; border-radius: 8px; font-size: 12px; cursor: pointer; }
     .fx-form .fx-save { background: var(--primary); color: #fff; }
     .fx-form .fx-cancel { background: var(--bg); color: var(--text-sub); }
@@ -244,6 +245,10 @@
           </div>
         </div>
         <div class="fx-form" id="fx-form">
+          <select id="fx-dir">
+            <option value="buy">购汇(人民币换外币)</option>
+            <option value="sell">结汇(外币换人民币)</option>
+          </select>
           <input type="date" id="fx-date" />
           <input type="number" id="fx-amount" placeholder="外币金额" step="0.01" min="0" inputmode="decimal" />
           <input type="number" id="fx-rate" placeholder="成交汇率" step="0.0001" min="0" inputmode="decimal" />
@@ -581,6 +586,7 @@
   async function saveFxRecord() {
     const pair = state.currentPair;
     if (!pair) return;
+    const dir = $('fx-dir').value;
     const date = $('fx-date').value;
     const amount = parseFloat($('fx-amount').value);
     const rate = parseFloat($('fx-rate').value);
@@ -589,7 +595,7 @@
       return;
     }
     const recs = getFxRecords(pair.code);
-    recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date, amount, rate });
+    recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dir, date, amount, rate });
     recs.sort((a, b) => a.date.localeCompare(b.date));
     saveFxRecords(pair.code, recs);
     hideAddFxForm();
@@ -614,11 +620,16 @@
     }
     list.innerHTML = recs.map(r => {
       const cny = (r.amount * r.rate / pair.unit).toFixed(2);
+      const isSell = r.dir === 'sell';
+      const dirText = isSell
+        ? `用 ${r.amount} ${pair.name} 结汇 ${cny} 人民币`
+        : `用 ${cny} 人民币 购汇 ${r.amount} ${pair.name}`;
+      const dirBadge = isSell ? '结汇' : '购汇';
       return `<div class="fx-item">
         <div class="fx-item-info">
-          <div class="fx-item-amount">${r.amount} ${pair.name} → ${cny} 人民币</div>
+          <div class="fx-item-amount">${dirText}</div>
           <div class="fx-item-rate">${pair.unitText} ${r.rate.toFixed(4)}</div>
-          <div class="fx-item-date">${fmtDate(r.date)}</div>
+          <div class="fx-item-date">${fmtDate(r.date)} · ${dirBadge}</div>
         </div>
         <button class="fx-del" onclick="deleteFxRecord('${r.id}')">×</button>
       </div>`;
@@ -646,9 +657,10 @@
       alert('暂无换汇记录可导出，请先添加记录');
       return;
     }
-    const header = ['日期', '货币对', '外币金额', '外币种类', '成交汇率(' + pair.unitText + ')', '人民币金额'];
+    const header = ['日期', '方向', '货币对', '外币金额', '外币种类', '成交汇率(' + pair.unitText + ')', '人民币金额'];
     const rows = recs.map(r => [
       r.date,
+      r.dir === 'sell' ? '结汇(外币换人民币)' : '购汇(人民币换外币)',
       pair.full,
       r.amount,
       pair.name,
