@@ -120,6 +120,9 @@
     .fx-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .fx-head h3 { font-size: 13px; color: var(--text-sub); font-weight: 500; }
     .fx-add-btn { background: var(--primary); color: #fff; border: none; font-size: 12px; padding: 6px 14px; border-radius: 14px; cursor: pointer; }
+    .fx-actions { display: flex; gap: 6px; }
+    .fx-export-btn { background: var(--card); color: var(--primary); border: 1px solid var(--primary); font-size: 12px; padding: 5px 12px; border-radius: 14px; cursor: pointer; }
+    .fx-empty { color: var(--text-sub); font-size: 12px; text-align: center; padding: 8px; }
     .fx-form { display: none; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
     .fx-form input { flex: 1; min-width: 70px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
     .fx-form button { padding: 7px 12px; border: none; border-radius: 8px; font-size: 12px; cursor: pointer; }
@@ -231,7 +234,10 @@
       <div class="fx-section">
         <div class="fx-head">
           <h3>换汇记录</h3>
-          <button class="fx-add-btn" onclick="showAddFxForm()">+ 添加</button>
+          <div class="fx-actions">
+            <button class="fx-export-btn" onclick="exportFxCSV(state.currentPair)">导出 Excel</button>
+            <button class="fx-add-btn" onclick="showAddFxForm()">+ 添加</button>
+          </div>
         </div>
         <div class="fx-form" id="fx-form">
           <input type="date" id="fx-date" />
@@ -611,6 +617,39 @@
         <button class="fx-del" onclick="deleteFxRecord('${r.id}')">×</button>
       </div>`;
     }).join('');
+  }
+
+  // 导出换汇记录为 CSV（带 UTF-8 BOM，Excel/WPS 双击直接打开为表格，中文不乱码）
+  function exportFxCSV(pair) {
+    if (!pair) return;
+    const recs = getFxRecords(pair.code);
+    if (recs.length === 0) {
+      alert('暂无换汇记录可导出，请先添加记录');
+      return;
+    }
+    const header = ['日期', '货币对', '外币金额', '外币种类', '成交汇率(' + pair.unitText + ')', '人民币金额'];
+    const rows = recs.map(r => [
+      r.date,
+      pair.full,
+      r.amount,
+      pair.name,
+      r.rate.toFixed(4),
+      (r.amount * r.rate / pair.unit).toFixed(2)
+    ]);
+    const csvEscape = (s) => {
+      const str = String(s);
+      return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+    };
+    const csv = [header, ...rows].map(row => row.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '换汇记录_' + pair.name + '_' + todayISO() + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async function renderDetail(pair, range) {
