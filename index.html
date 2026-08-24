@@ -9,7 +9,6 @@
   <meta http-equiv="Expires" content="0" />
   <title>人民币汇率实时查询</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E¥%3C/text%3E%3C/svg%3E" />
-  <script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.2/chart.umd.min.js"></script>
   <style>
     :root {
       --primary: #0b5fff;
@@ -207,6 +206,31 @@
   </div>
 
 <script>
+  // ============ Chart.js 多CDN容错加载 ============
+  // 静态CDN加载失败时自动切换下一个，确保图表库一定能加载成功
+  function loadChartJS() {
+    return new Promise((resolve) => {
+      if (window.Chart) return resolve(true);
+      const cdns = [
+        'https://cdn.staticfile.org/chart.js/4.4.2/chart.umd.min.js',
+        'https://lib.baomitu.com/ajax/libs/Chart.js/4.4.2/chart.umd.min.js',
+        'https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.2/chart.umd.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.2/chart.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js'
+      ];
+      let i = 0;
+      const tryNext = () => {
+        if (i >= cdns.length) return resolve(false);
+        const s = document.createElement('script');
+        s.src = cdns[i++];
+        s.onload = () => resolve(!!window.Chart);
+        s.onerror = () => { s.remove(); tryNext(); };
+        document.head.appendChild(s);
+      };
+      tryNext();
+    });
+  }
+
   // ============ Config ============
   // frankfurter.app: 1 unit of `base` = X units of `quote`
   // 我们以"1 外币 = X 人民币"对外展示（日元特殊：100 日元 = X 人民币）
@@ -219,7 +243,7 @@
   const API = 'https://api.frankfurter.dev/v1';
   // state.current: { date, rates:{CNY,HKD,JPY}, stale? } 来自任一可用数据源
   // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
-  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null, refreshCount: 0 };
+  const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null, refreshCount: 0, chartReady: null };
 
   // 内置静态兜底数据（当所有在线数据源都不可达时使用，标注"离线缓存"）
   // 数值取自最近一次成功获取的 frankfurter.app 返回（USD=base）
@@ -499,10 +523,16 @@
       const parent = document.querySelector('.chart-box');
       parent.innerHTML = '<canvas id="chart"></canvas>';
     }
-    drawChart(pair, series);
+    await drawChart(pair, series);
   }
 
-  function drawChart(pair, series) {
+  async function drawChart(pair, series) {
+    // 等待 Chart.js 加载完成（多CDN容错，可能仍在后台加载中）
+    if (state.chartReady) await state.chartReady;
+    if (!window.Chart) {
+      $('d-note').textContent = '⚠️ 图表库加载失败，无法绘制曲线。请检查网络后刷新页面重试。';
+      return;
+    }
     const ctx = $('chart').getContext('2d');
     if (state.chart) state.chart.destroy();
     const labels = series.map(s => fmtDate(s.date).slice(5)); // MM/DD
@@ -553,6 +583,8 @@
 
   // ============ Init ============
   async function init() {
+    // 0. 后台加载 Chart.js（多CDN容错），不阻塞首页汇率显示
+    state.chartReady = loadChartJS();
     // 1. 主线：拉当前汇率，立即渲染主页（核心需求）
     try {
       state.current = await fetchCurrent();
