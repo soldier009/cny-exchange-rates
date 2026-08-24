@@ -178,7 +178,7 @@
             <div class="rate-value"><div class="skeleton" style="width:70px;margin-left:auto"></div></div>
           </div>
         </div>
-        <div class="note">点击任意汇率卡片可查看 30 天走势曲线<br/>本数据仅供参考，实际交易请以银行挂牌价为准。</div>
+        <div class="note">点击任意汇率卡片可查看 30 天走势曲线<br/>欧洲央行中间价每个工作日约 21:00 后更新，周末与节假日不更新<br/>本数据仅供参考，实际交易请以银行挂牌价为准。</div>
       </div>
     </div>
 
@@ -366,7 +366,7 @@
       list.appendChild(card);
     });
 
-    $('updated').textContent = `更新时间：${fmtDate(state.current.date)} · 数据：${state.current.stale ? '离线缓存' : '欧洲央行中间价'}`;
+    $('updated').textContent = `更新时间：${fmtDate(state.current.date)} · ${state.current.stale ? '离线缓存' : '欧洲央行中间价'} · 刷新 ${new Date().toTimeString().slice(0,5)}`;
     if (state.current.stale) {
       showBanner('⚠️ 当前网络无法连接到在线汇率接口，已显示离线缓存数据（仅供参考）。请检查网络后下拉刷新。');
     } else {
@@ -599,6 +599,7 @@
   async function manualRefresh() {
     const btn = $('refresh-btn');
     if (btn) btn.classList.add('spin');
+    $('updated').textContent = '刷新中…';
     try {
       state.current = await fetchCurrent();
       await loadHistorySilently(); // 强制重试历史
