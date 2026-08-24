@@ -151,7 +151,7 @@
     <div id="view-home" class="view active">
       <div class="header">
         <h1>人民币汇率 <span>¥</span></h1>
-        <div class="sub">实时中间价 · 数据来源：欧洲央行</div>
+        <div class="sub">实时中间价 · 每 60 秒自动刷新 · 欧洲央行</div>
         <div class="updated" id="updated">加载中…</div>
         <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" aria-label="刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -216,7 +216,7 @@
     { code: 'JPY', base: 'JPY', quote: 'CNY', unit: 100, flag: '🇯🇵', name: '日元', full: '人民币兑日元', unitText: '100 日元 =' }
   ];
 
-  const API = 'https://api.frankfurter.app';
+  const API = 'https://api.frankfurter.dev/v1';
   // state.current: { date, rates:{CNY,HKD,JPY}, stale? } 来自任一可用数据源
   // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
   const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null };
@@ -559,8 +559,8 @@
     await loadHistorySilently();
     if (state.prevRates) renderHome(); // 有了对比数据，重新渲染一次以显示涨跌
 
-    // 3. 定时刷新当前汇率（每 5 分钟）
-    setTimeout(autoRefresh, 5 * 60 * 1000);
+    // 3. 定时刷新当前汇率（每 60 秒）
+    setTimeout(autoRefresh, 60 * 1000);
   }
 
   async function loadHistorySilently() {
@@ -581,8 +581,8 @@
   async function autoRefresh() {
     try {
       state.current = await fetchCurrent();
-      // 偶尔重刷历史（每 6 次刷新刷一次，约 30 分钟）
-      if (!state.history || Math.random() < 0.15) {
+      // 每次自动刷新都尝试重拉历史（保证曲线最新，失败静默）
+      if (!state.history) {
         await loadHistorySilently();
       }
       if ($('view-home').classList.contains('active')) {
