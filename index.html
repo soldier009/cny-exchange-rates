@@ -685,6 +685,11 @@
   async function deleteFxRecord(id) {
     const pair = state.currentPair;
     if (!pair) return;
+    const rec = getFxRecords(pair.code).find(r => r.id === id);
+    if (!rec) return;
+    const cny = (rec.amount * rec.rate).toFixed(2);
+    const dirLabel = rec.dir === 'sell' ? `结汇 ${cny} 人民币` : `购汇 ${rec.amount} ${pair.name}`;
+    if (!confirm(`确定删除这条换汇记录吗？\n\n${fmtDate(rec.date)} · ${rec.dir === 'sell' ? '结汇' : '购汇'}\n${dirLabel}`)) return;
     const recs = getFxRecords(pair.code).filter(r => r.id !== id);
     saveFxRecords(pair.code, recs);
     renderFxList(pair);
