@@ -163,6 +163,20 @@
       cursor: pointer; backdrop-filter: blur(4px);
     }
     .refresh-btn:active { background: rgba(255,255,255,.3); }
+    .cloud-btn { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4); font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; margin-left: 8px; }
+    .cloud-modal { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,.5); z-index: 100; display: none; }
+    .cloud-modal.show { display: flex; align-items: center; justify-content: center; }
+    .cloud-panel { background: #fff; border-radius: 14px; padding: 18px; margin: 16px; max-width: 400px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+    .cloud-panel h3 { font-size: 16px; margin-bottom: 4px; }
+    .cloud-panel label { font-size: 12px; color: var(--text-sub); display: block; margin-top: 10px; }
+    .cloud-panel input { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-top: 4px; box-sizing: border-box; }
+    .cloud-row { display: flex; gap: 8px; margin-top: 14px; }
+    .cloud-row button { flex: 1; padding: 9px; border-radius: 8px; font-size: 13px; cursor: pointer; border: none; }
+    .cloud-up { background: var(--primary); color: #fff; }
+    .cloud-down { background: var(--down); color: #fff; }
+    .cloud-close { background: var(--bg); color: var(--text); margin-top: 8px; width: 100%; padding: 9px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; }
+    .cloud-status { font-size: 12px; margin-top: 10px; min-height: 16px; word-break: break-all; }
+    .cloud-help { font-size: 11px; color: var(--text-sub); margin-top: 12px; line-height: 1.5; }
     .refresh-btn.spin svg { animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -184,6 +198,7 @@
         <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" aria-label="刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
+        <button class="cloud-btn" onclick="showCloudSync()">云同步</button>
       </div>
 
       <div class="main">
@@ -207,6 +222,24 @@
           </div>
         </div>
         <div class="note">点击任意汇率卡片可查看 30 天走势曲线<br/>数据来源：exchangerate.fun 等免费汇率接口 · 走势曲线：欧洲央行中间价<br/>仅在打开页面或点击刷新时获取最新数据 · 周末外汇休市数据可能停留于周五<br/>本数据仅供参考，实际交易请以银行挂牌价为准。</div>
+      </div>
+    </div>
+
+    <!-- Cloud Sync Modal -->
+    <div class="cloud-modal" id="cloud-modal">
+      <div class="cloud-panel">
+        <h3>云同步（GitHub Gist）</h3>
+        <label>Personal Access Token（需 gist 权限）</label>
+        <input type="password" id="cloud-token" placeholder="ghp_xxx..." />
+        <label>Gist ID（首次留空自动创建，跨设备从A设备复制）</label>
+        <input type="text" id="cloud-gist-id" placeholder="留空首次上传自动创建" />
+        <div class="cloud-row">
+          <button class="cloud-up" onclick="syncToCloud()">上传到云</button>
+          <button class="cloud-down" onclick="syncFromCloud()">从云下载</button>
+        </div>
+        <button class="cloud-close" onclick="closeCloudSync()">关闭</button>
+        <div class="cloud-status" id="cloud-status"></div>
+        <div class="cloud-help">获取 Token：访问 github.com/settings/tokens/new 勾选 gist 权限创建<br/>首次在A设备点"上传到云"自动创建 Gist，面板会显示 Gist ID，复制填到B设备即可同步<br/>上传=本地→云端，下载=云端→本地（自动合并去重）</div>
       </div>
     </div>
 
@@ -750,6 +783,83 @@
       alert(`导入完成：新增 ${added} 条，跳过 ${skipped} 条（格式错误或重复）`);
     } catch (e) {
       alert('导入失败：' + e.message);
+    }
+  }
+
+  // ============ 云同步（GitHub Gist）============
+  function showCloudSync() {
+    $('cloud-token').value = localStorage.getItem('fx_cloud_token') || '';
+    $('cloud-gist-id').value = localStorage.getItem('fx_cloud_gist_id') || '';
+    $('cloud-status').textContent = '';
+    $('cloud-modal').classList.add('show');
+  }
+  function closeCloudSync() {
+    $('cloud-modal').classList.remove('show');
+  }
+  function setCloudStatus(msg, isErr) {
+    const el = $('cloud-status');
+    el.textContent = msg;
+    el.style.color = isErr ? 'var(--up)' : 'var(--down)';
+  }
+  async function syncToCloud() {
+    const token = $('cloud-token').value.trim();
+    let gistId = $('cloud-gist-id').value.trim();
+    if (!token) { setCloudStatus('请填 Token', true); return; }
+    setCloudStatus('上传中...');
+    try {
+      const data = {};
+      ['USD','HKD','JPY'].forEach(c => { data['fx_' + c] = JSON.parse(localStorage.getItem('fx_' + c) || '[]'); });
+      const res = await fetch('https://api.github.com/gists' + (gistId ? '/' + gistId : ''), {
+        method: gistId ? 'PATCH' : 'POST',
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'cny-exchange-rates sync', public: false, files: { 'fx_records.json': { content: JSON.stringify(data) } } })
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || ('HTTP ' + res.status)); }
+      const j = await res.json();
+      gistId = j.id;
+      localStorage.setItem('fx_cloud_token', token);
+      localStorage.setItem('fx_cloud_gist_id', gistId);
+      $('cloud-gist-id').value = gistId;
+      setCloudStatus('上传成功！Gist ID: ' + gistId + '（复制到其他设备同步）', false);
+    } catch (e) {
+      setCloudStatus('上传失败：' + e.message, true);
+    }
+  }
+  async function syncFromCloud() {
+    const token = $('cloud-token').value.trim();
+    const gistId = $('cloud-gist-id').value.trim();
+    if (!token || !gistId) { setCloudStatus('请填 Token 和 Gist ID', true); return; }
+    setCloudStatus('下载中...');
+    try {
+      const res = await fetch('https://api.github.com/gists/' + gistId, {
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      const f = j.files && j.files['fx_records.json'];
+      if (!f) throw new Error('Gist 中无 fx_records.json');
+      const data = JSON.parse(f.content);
+      localStorage.setItem('fx_cloud_token', token);
+      localStorage.setItem('fx_cloud_gist_id', gistId);
+      let added = 0, skipped = 0;
+      ['USD','HKD','JPY'].forEach(c => {
+        const key = 'fx_' + c;
+        const existing = JSON.parse(localStorage.getItem(key) || '[]');
+        const keys = new Set(existing.map(r => `${r.date}|${r.dir}|${r.amount}|${r.rate}`));
+        (data[key] || []).forEach(r => {
+          const k = `${r.date}|${r.dir||'buy'}|${r.amount}|${r.rate}`;
+          if (keys.has(k)) { skipped++; return; }
+          existing.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), dir: r.dir||'buy', date: r.date, amount: Number(r.amount), rate: Number(r.rate) });
+          keys.add(k);
+          added++;
+        });
+        existing.sort((a,b) => a.date.localeCompare(b.date));
+        localStorage.setItem(key, JSON.stringify(existing));
+      });
+      renderHome();
+      setCloudStatus('下载完成：新增 ' + added + ' 条，跳过 ' + skipped + ' 条（重复）', false);
+    } catch (e) {
+      setCloudStatus('下载失败：' + e.message, true);
     }
   }
 
