@@ -645,17 +645,22 @@
     };
     const B = calc(buys), S = calc(sells);
     const remain = B.t - S.t;
+    // 剩余金额的平均汇率 = 净人民币 / 净外币 = (购汇人民币 - 结汇人民币) / (购汇外币 - 结汇外币)
+    const netCny = B.c - S.c;
+    const remainRate = remain !== 0 ? netCny / remain : 0;
     let h = '';
     if (B.t > 0) {
-      h += `<div class="fx-summary-row"><span class="fx-summary-label">购汇合计</span><span class="fx-summary-value">${B.t.toFixed(2)} ${pair.name} → ${B.c.toFixed(2)} 人民币 · 均价 ${pair.unitText} ${B.r.toFixed(4)}</span></div>`;
+      // 购汇：人民币换外币，方向 人民币→外币
+      h += `<div class="fx-summary-row"><span class="fx-summary-label">购汇合计</span><span class="fx-summary-value">${B.c.toFixed(2)} 人民币 → ${B.t.toFixed(2)} ${pair.name} · 均价 ${pair.unitText} ${B.r.toFixed(4)}</span></div>`;
     }
     if (S.t > 0) {
+      // 结汇：外币换人民币，方向 外币→人民币
       h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">结汇合计</span><span class="fx-summary-value">${S.t.toFixed(2)} ${pair.name} → ${S.c.toFixed(2)} 人民币 · 均价 ${pair.unitText} ${S.r.toFixed(4)}</span></div>`;
     }
     if (remain > 0) {
-      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">未结汇余额</span><span class="fx-summary-value">${remain.toFixed(2)} ${pair.name} · 成本均价 ${pair.unitText} ${B.r.toFixed(4)}</span></div>`;
+      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">未结汇余额</span><span class="fx-summary-value">${remain.toFixed(2)} ${pair.name} · 成本均价 ${pair.unitText} ${remainRate.toFixed(4)}</span></div>`;
     } else if (remain < 0) {
-      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">超结汇</span><span class="fx-summary-value">${Math.abs(remain).toFixed(2)} ${pair.name} · 成交均价 ${pair.unitText} ${S.r.toFixed(4)}</span></div>`;
+      h += `<div class="fx-summary-row" style="margin-top:4px"><span class="fx-summary-label">超结汇</span><span class="fx-summary-value">${Math.abs(remain).toFixed(2)} ${pair.name} · 成交均价 ${pair.unitText} ${remainRate.toFixed(4)}</span></div>`;
     }
     $('fx-summary').innerHTML = h;
   }
