@@ -69,6 +69,7 @@
     .rate-info { flex: 1; min-width: 0; }
     .rate-name { font-size: 15px; font-weight: 600; }
     .rate-unit { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+    .rate-hold { font-size: 11px; color: var(--primary); margin-top: 4px; font-weight: 500; }
     .rate-value { text-align: right; }
     .rate-num { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
     .rate-change { font-size: 12px; margin-top: 2px; }
@@ -480,6 +481,14 @@
         changeText = `${arrow} ${Math.abs(diff).toFixed(decimals)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`;
       }
 
+      // 计算持有外币余额（购汇合计 - 结汇合计，不小于0；超结汇显示0）
+      const fxRecs = getFxRecords(p.code);
+      const bT = fxRecs.filter(r => r.dir !== 'sell').reduce((s, r) => s + Number(r.amount), 0);
+      const sT = fxRecs.filter(r => r.dir === 'sell').reduce((s, r) => s + Number(r.amount), 0);
+      const hold = Math.max(bT - sT, 0);
+      const holdCny = val != null ? hold * val : 0;
+      const holdText = hold > 0 ? `<div class="rate-hold">持有 ${hold.toFixed(2)} ${p.name} ≈ ${holdCny.toFixed(2)} 人民币</div>` : '';
+
       const card = document.createElement('div');
       card.className = 'rate-card';
       card.onclick = () => showDetail(p);
@@ -488,6 +497,7 @@
         <div class="rate-info">
           <div class="rate-name">人民币兑${p.name}</div>
           <div class="rate-unit">${p.unitText} <span style="color:#1c2330;font-weight:600">${display != null ? fmt(display, decimals) : '--'}</span> 人民币</div>
+          ${holdText}
         </div>
         <div class="rate-value">
           <div class="rate-num">${display != null ? fmt(display, decimals) : '--'}</div>
