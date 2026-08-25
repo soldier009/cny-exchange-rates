@@ -664,7 +664,7 @@
       return;
     }
     list.innerHTML = recs.map(r => {
-      const cny = (r.amount * r.rate / pair.unit).toFixed(2);
+      const cny = (r.amount * r.rate).toFixed(2);
       const isSell = r.dir === 'sell';
       const dirText = isSell
         ? `用 ${r.amount} ${pair.name} 结汇 ${cny} 人民币`
@@ -684,7 +684,7 @@
     const sells = recs.filter(r => r.dir === 'sell');
     const calc = (arr) => {
       const t = arr.reduce((s, r) => s + Number(r.amount), 0);
-      const c = arr.reduce((s, r) => s + r.amount * r.rate / pair.unit, 0);
+      const c = arr.reduce((s, r) => s + r.amount * r.rate, 0);
       const r = t > 0 ? arr.reduce((s, x) => s + x.rate * x.amount, 0) / t : 0;
       return { t, c, r };
     };
@@ -726,7 +726,7 @@
       r.amount,
       pair.name,
       (r.rate * pair.unit).toFixed(4),
-      (r.amount * r.rate / pair.unit).toFixed(2)
+      (r.amount * r.rate).toFixed(2)
     ]);
     const csvEscape = (s) => {
       const str = String(s);
