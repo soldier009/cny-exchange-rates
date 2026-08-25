@@ -1026,7 +1026,8 @@
     fxRecs.forEach(r => { recsByDate[r.date] = r; });
     const fxData = series.map(s => {
       const rec = recsByDate[s.date];
-      return rec ? Number(rec.rate) : null;
+      // 曲线显示值是乘了 unit 的（日元100日元=X），标点 y 也要乘 unit 才能对齐曲线
+      return rec ? Number(rec.rate) * pair.unit : null;
     });
     const hasFx = fxData.some(v => v != null);
 
