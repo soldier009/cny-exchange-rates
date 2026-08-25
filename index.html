@@ -141,6 +141,8 @@
     .fx-item-rate { color: var(--text-sub); margin-top: 2px; }
     .fx-item-date { color: var(--text-sub); font-size: 11px; }
     .fx-del { background: transparent; border: none; color: var(--up); cursor: pointer; font-size: 16px; padding: 0 4px; }
+    .fx-edit { background: transparent; border: none; color: var(--primary); cursor: pointer; font-size: 12px; padding: 0 6px; font-weight: 500; }
+    .fx-form-title { font-size: 13px; color: var(--text); margin-bottom: 4px; flex-basis: 100%; font-weight: 500; }
 
     .stat-row { display: flex; gap: 8px; margin: 12px 14px; }
     .stat {
@@ -281,6 +283,7 @@
           </div>
         </div>
         <div class="fx-form" id="fx-form">
+          <div class="fx-form-title" id="fx-form-title">添加换汇记录</div>
           <select id="fx-dir">
             <option value="buy">购汇(人民币换外币)</option>
             <option value="sell">结汇(外币换人民币)</option>
@@ -613,12 +616,16 @@
   function showAddFxForm() {
     const pair = state.currentPair;
     if (!pair) return;
+    state.editingFxId = null;
+    $('fx-form-title').textContent = '添加换汇记录';
     $('fx-form').style.display = 'flex';
     $('fx-date').value = todayISO();
+    $('fx-dir').value = 'buy';
     if (state.current) {
       const v = convertPair(pair, state.current.rates.CNY, state.current.rates[pair.base]);
       if (v != null) $('fx-rate').value = (v * pair.unit).toFixed(4);
     }
+    $('fx-amount').value = '';
     $('fx-amount').placeholder = pair.name + '金额';
     $('fx-rate').placeholder = pair.unitText.replace('=', '=?');
     $('fx-amount').focus();
@@ -627,6 +634,25 @@
     $('fx-form').style.display = 'none';
     $('fx-amount').value = '';
     $('fx-rate').value = '';
+    state.editingFxId = null;
+  }
+  function editFxRecord(id) {
+    const pair = state.currentPair;
+    if (!pair) return;
+    const rec = getFxRecords(pair.code).find(r => r.id === id);
+    if (!rec) return;
+    state.editingFxId = id;
+    $('fx-form-title').textContent = '编辑换汇记录';
+    $('fx-form').style.display = 'flex';
+    $('fx-dir').value = rec.dir || 'buy';
+    $('fx-date').value = rec.date;
+    $('fx-amount').value = rec.amount;
+    $('fx-rate').value = (rec.rate * pair.unit).toFixed(4);
+    $('fx-amount').placeholder = pair.name + '金额';
+    $('fx-rate').placeholder = pair.unitText.replace('=', '=?');
+    $('fx-amount').focus();
+    // 滚动到表单
+    document.getElementById('fx-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
   async function saveFxRecord() {
     const pair = state.currentPair;
@@ -634,13 +660,22 @@
     const dir = $('fx-dir').value;
     const date = $('fx-date').value;
     const amount = parseFloat($('fx-amount').value);
-    const rate = parseFloat($('fx-rate').value);
-    if (!date || !amount || !rate || amount <= 0 || rate <= 0) {
+    // fx-rate 输入是显示格式（每100日元=X），存时还原为每1外币汇率
+    const rateDisplayed = parseFloat($('fx-rate').value);
+    if (!date || !amount || !rateDisplayed || amount <= 0 || rateDisplayed <= 0) {
       alert('请填写日期、金额和汇率（均需大于0）');
       return;
     }
+    const rate = rateDisplayed / pair.unit;
     const recs = getFxRecords(pair.code);
-    recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dir, date, amount, rate });
+    if (state.editingFxId) {
+      // 编辑：更新匹配ID的记录
+      const idx = recs.findIndex(r => r.id === state.editingFxId);
+      if (idx >= 0) recs[idx] = { ...recs[idx], dir, date, amount, rate };
+    } else {
+      // 新增
+      recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dir, date, amount, rate });
+    }
     recs.sort((a, b) => a.date.localeCompare(b.date));
     saveFxRecords(pair.code, recs);
     hideAddFxForm();
@@ -676,6 +711,7 @@
           <div class="fx-item-rate">${pair.unitText} ${(r.rate * pair.unit).toFixed(4)}</div>
           <div class="fx-item-date">${fmtDate(r.date)} · ${dirBadge}</div>
         </div>
+        <button class="fx-edit" onclick="editFxRecord('${r.id}')">编辑</button>
         <button class="fx-del" onclick="deleteFxRecord('${r.id}')">×</button>
       </div>`;
     }).join('');
