@@ -241,6 +241,8 @@
           <h3>换汇记录</h3>
           <div class="fx-actions">
             <button class="fx-export-btn" onclick="exportFxCSV(state.currentPair)">导出 Excel</button>
+            <button class="fx-export-btn" onclick="importFxCSV(state.currentPair)">导入 CSV</button>
+            <input type="file" id="fx-import-input" accept=".csv" style="display:none" onchange="handleFxImport(event, state.currentPair)">
             <button class="fx-add-btn" onclick="showAddFxForm()">+ 添加</button>
           </div>
         </div>
@@ -697,6 +699,48 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  // 导入换汇记录 CSV（设备间迁移：A 设备导出 CSV → 传到 B 设备 → B 设备导入）
+  function importFxCSV(pair) {
+    if (!pair) return;
+    $('fx-import-input').click();
+  }
+
+  async function handleFxImport(ev, pair) {
+    if (!pair) return;
+    const file = ev.target.files[0];
+    if (!file) return;
+    ev.target.value = '';
+    try {
+      const text = await file.text();
+      const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) { alert('CSV 文件为空或格式错误'); return; }
+      const existing = getFxRecords(pair.code);
+      const keys = new Set(existing.map(r => `${r.date}|${r.dir}|${r.amount}|${r.rate}`));
+      let added = 0, skipped = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(s => s.trim());
+        if (cols.length < 7) { skipped++; continue; }
+        const date = cols[0];
+        const dir = cols[1].includes('结汇') ? 'sell' : 'buy';
+        const amount = parseFloat(cols[3]);
+        const rate = parseFloat(cols[5]);
+        if (!date || !amount || !rate || amount <= 0 || rate <= 0) { skipped++; continue; }
+        const key = `${date}|${dir}|${amount}|${rate}`;
+        if (keys.has(key)) { skipped++; continue; }
+        existing.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + i, dir, date, amount, rate });
+        keys.add(key);
+        added++;
+      }
+      existing.sort((a, b) => a.date.localeCompare(b.date));
+      saveFxRecords(pair.code, existing);
+      renderFxList(pair);
+      await renderDetail(pair, state.currentRange);
+      alert(`导入完成：新增 ${added} 条，跳过 ${skipped} 条（格式错误或重复）`);
+    } catch (e) {
+      alert('导入失败：' + e.message);
+    }
   }
 
   async function renderDetail(pair, range) {
