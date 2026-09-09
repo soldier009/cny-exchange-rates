@@ -922,9 +922,9 @@
       const existing = map.get(r.id);
       const rm = r.mtime || 0;
       if (!existing) {
-        // 云端独有：下载
+        // 云端独有：下载（含墓碑也算删除传播）
         map.set(r.id, { ...r, mtime: rm });
-        added++;
+        if (r.deleted) deletedCount++; else added++;
       } else {
         // 两端都有：取 mtime 大的
         const lm = existing.mtime || 0;
