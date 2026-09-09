@@ -166,6 +166,7 @@
     }
     .refresh-btn:active { background: rgba(255,255,255,.3); }
     .cloud-btn { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4); font-size: 11px; padding: 4px 10px; border-radius: 12px; cursor: pointer; margin-left: 8px; }
+    .cloud-settings-btn { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4); font-size: 14px; padding: 4px 10px; border-radius: 12px; cursor: pointer; margin-left: 6px; line-height: 1; }
     .cloud-modal { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,.5); z-index: 100; display: none; }
     .cloud-modal.show { display: flex; align-items: center; justify-content: center; }
     .cloud-panel { background: #fff; border-radius: 14px; padding: 18px; margin: 16px; max-width: 400px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
@@ -174,11 +175,12 @@
     .cloud-panel input { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; margin-top: 4px; box-sizing: border-box; }
     .cloud-row { display: flex; gap: 8px; margin-top: 14px; }
     .cloud-row button { flex: 1; padding: 9px; border-radius: 8px; font-size: 13px; cursor: pointer; border: none; }
-    .cloud-up { background: var(--primary); color: #fff; }
-    .cloud-down { background: var(--down); color: #fff; }
+    .cloud-save { background: var(--primary); color: #fff; }
+    .cloud-clear { background: var(--up); color: #fff; }
     .cloud-close { background: var(--bg); color: var(--text); margin-top: 8px; width: 100%; padding: 9px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; }
     .cloud-status { font-size: 12px; margin-top: 10px; min-height: 16px; word-break: break-all; }
     .cloud-help { font-size: 11px; color: var(--text-sub); margin-top: 12px; line-height: 1.5; }
+    .cloud-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.8); color: #fff; padding: 8px 16px; border-radius: 8px; font-size: 12px; z-index: 200; max-width: 90vw; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
     .refresh-btn.spin svg { animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -200,7 +202,8 @@
         <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" aria-label="刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
-        <button class="cloud-btn" onclick="showCloudSync()">云同步</button>
+        <button class="cloud-btn" id="cloud-sync-btn" onclick="syncCloud(true)">云同步</button>
+        <button class="cloud-settings-btn" onclick="showSettings()" aria-label="设置">⚙</button>
       </div>
 
       <div class="main">
@@ -227,21 +230,21 @@
       </div>
     </div>
 
-    <!-- Cloud Sync Modal -->
+    <!-- Cloud Settings Modal -->
     <div class="cloud-modal" id="cloud-modal">
       <div class="cloud-panel">
-        <h3>云同步（GitHub Gist）</h3>
+        <h3>云同步设置</h3>
         <label>Personal Access Token（需 gist 权限）</label>
         <input type="password" id="cloud-token" placeholder="ghp_xxx..." />
-        <label>Gist ID（首次留空自动创建，跨设备从A设备复制）</label>
-        <input type="text" id="cloud-gist-id" placeholder="留空首次上传自动创建" />
+        <label>Gist ID（首次留空，自动创建后显示在此）</label>
+        <input type="text" id="cloud-gist-id" placeholder="留空首次自动创建" />
         <div class="cloud-row">
-          <button class="cloud-up" onclick="syncToCloud()">上传到云</button>
-          <button class="cloud-down" onclick="syncFromCloud()">从云下载</button>
+          <button class="cloud-save" onclick="saveCloudSettings()">保存设置</button>
+          <button class="cloud-clear" onclick="clearCloudSettings()">清空配置</button>
         </div>
-        <button class="cloud-close" onclick="closeCloudSync()">关闭</button>
+        <button class="cloud-close" onclick="closeSettings()">关闭</button>
         <div class="cloud-status" id="cloud-status"></div>
-        <div class="cloud-help">获取 Token：访问 github.com/settings/tokens/new 勾选 gist 权限创建<br/>首次在A设备点"上传到云"自动创建 Gist，面板会显示 Gist ID，复制填到B设备即可同步<br/>上传=本地→云端，下载=云端→本地（自动合并去重）</div>
+        <div class="cloud-help">获取 Token：访问 github.com/settings/tokens/new 勾选 gist 权限创建<br/>首次保存并点"云同步"会自动创建 Gist，Gist ID 会回填到上方输入框<br/>主页点"云同步"=双向合并同步（上传+下载+删除传播）</div>
       </div>
     </div>
 
@@ -626,6 +629,13 @@
 
   // ============ 换汇记录（localStorage 按货币对存储）============
   function getFxRecords(pairCode) {
+    try {
+      // 过滤掉 deleted:true 的墓碑记录（数据保留在 localStorage，仅列表不显示）
+      return JSON.parse(localStorage.getItem('fx_' + pairCode) || '[]').filter(r => !r.deleted);
+    } catch (e) { return []; }
+  }
+  // 获取全部记录（含墓碑），用于云同步
+  function getAllFxRecords(pairCode) {
     try { return JSON.parse(localStorage.getItem('fx_' + pairCode) || '[]'); }
     catch (e) { return []; }
   }
@@ -686,14 +696,15 @@
       return;
     }
     const rate = rateDisplayed / pair.unit;
-    const recs = getFxRecords(pair.code);
+    // 用 getAllFxRecords 保留墓碑记录，避免编辑时丢失已删除记录
+    const recs = getAllFxRecords(pair.code);
     if (state.editingFxId) {
-      // 编辑：更新匹配ID的记录
+      // 编辑：更新匹配ID的记录（含 mtime 用于云同步冲突仲裁）
       const idx = recs.findIndex(r => r.id === state.editingFxId);
-      if (idx >= 0) recs[idx] = { ...recs[idx], dir, date, amount, rate };
+      if (idx >= 0) recs[idx] = { ...recs[idx], dir, date, amount, rate, mtime: Date.now() };
     } else {
       // 新增
-      recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dir, date, amount, rate });
+      recs.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dir, date, amount, rate, mtime: Date.now() });
     }
     recs.sort((a, b) => a.date.localeCompare(b.date));
     saveFxRecords(pair.code, recs);
@@ -709,8 +720,14 @@
     const cny = (rec.amount * rec.rate).toFixed(2);
     const dirLabel = rec.dir === 'sell' ? `结汇 ${cny} 人民币` : `购汇 ${rec.amount} ${pair.name}`;
     if (!confirm(`确定删除这条换汇记录吗？\n\n${fmtDate(rec.date)} · ${rec.dir === 'sell' ? '结汇' : '购汇'}\n${dirLabel}`)) return;
-    const recs = getFxRecords(pair.code).filter(r => r.id !== id);
-    saveFxRecords(pair.code, recs);
+    // 墓碑标记：不真删，标 deleted:true + mtime，云同步时传播删除
+    const allRecs = getAllFxRecords(pair.code);
+    const idx = allRecs.findIndex(r => r.id === id);
+    if (idx >= 0) {
+      allRecs[idx].deleted = true;
+      allRecs[idx].mtime = Date.now();
+      saveFxRecords(pair.code, allRecs);
+    }
     renderFxList(pair);
     await renderDetail(pair, state.currentRange);
   }
@@ -819,7 +836,7 @@
       const text = await file.text();
       const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
       if (lines.length < 2) { alert('CSV 文件为空或格式错误'); return; }
-      const existing = getFxRecords(pair.code);
+      const existing = getAllFxRecords(pair.code);
       const keys = new Set(existing.map(r => `${r.date}|${r.dir}|${r.amount}|${r.rate}`));
       let added = 0, skipped = 0;
       for (let i = 1; i < lines.length; i++) {
@@ -848,14 +865,14 @@
     }
   }
 
-  // ============ 云同步（GitHub Gist）============
-  function showCloudSync() {
+  // ============ 云同步（GitHub Gist，双向合并 + 墓碑删除传播）============
+  function showSettings() {
     $('cloud-token').value = localStorage.getItem('fx_cloud_token') || '';
     $('cloud-gist-id').value = localStorage.getItem('fx_cloud_gist_id') || '';
     $('cloud-status').textContent = '';
     $('cloud-modal').classList.add('show');
   }
-  function closeCloudSync() {
+  function closeSettings() {
     $('cloud-modal').classList.remove('show');
   }
   function setCloudStatus(msg, isErr) {
@@ -863,65 +880,183 @@
     el.textContent = msg;
     el.style.color = isErr ? 'var(--up)' : 'var(--down)';
   }
-  async function syncToCloud() {
-    const token = $('cloud-token').value.trim();
-    let gistId = $('cloud-gist-id').value.trim();
-    if (!token) { setCloudStatus('请填 Token', true); return; }
-    setCloudStatus('上传中...');
-    try {
-      const data = {};
-      ['USD','HKD','JPY'].forEach(c => { data['fx_' + c] = JSON.parse(localStorage.getItem('fx_' + c) || '[]'); });
-      const res = await fetch('https://api.github.com/gists' + (gistId ? '/' + gistId : ''), {
-        method: gistId ? 'PATCH' : 'POST',
-        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: 'cny-exchange-rates sync', public: false, files: { 'fx_records.json': { content: JSON.stringify(data) } } })
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || ('HTTP ' + res.status)); }
-      const j = await res.json();
-      gistId = j.id;
-      localStorage.setItem('fx_cloud_token', token);
-      localStorage.setItem('fx_cloud_gist_id', gistId);
-      $('cloud-gist-id').value = gistId;
-      setCloudStatus('上传成功！Gist ID: ' + gistId + '（复制到其他设备同步）', false);
-    } catch (e) {
-      setCloudStatus('上传失败：' + e.message, true);
-    }
+  // toast 提示（自动同步失败/手动同步结果）
+  function showToast(msg, duration) {
+    const old = document.querySelector('.cloud-toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.className = 'cloud-toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), duration || 3000);
   }
-  async function syncFromCloud() {
+  function saveCloudSettings() {
     const token = $('cloud-token').value.trim();
     const gistId = $('cloud-gist-id').value.trim();
-    if (!token || !gistId) { setCloudStatus('请填 Token 和 Gist ID', true); return; }
-    setCloudStatus('下载中...');
+    if (!token) { setCloudStatus('请填 Token', true); return; }
+    localStorage.setItem('fx_cloud_token', token);
+    localStorage.setItem('fx_cloud_gist_id', gistId);
+    setCloudStatus('设置已保存。点主页"云同步"开始同步。', false);
+  }
+  function clearCloudSettings() {
+    if (!confirm('确定清空云同步配置吗？\n（本地换汇记录不删，仅清空 Token 和 Gist ID）')) return;
+    localStorage.removeItem('fx_cloud_token');
+    localStorage.removeItem('fx_cloud_gist_id');
+    $('cloud-token').value = '';
+    $('cloud-gist-id').value = '';
+    setCloudStatus('配置已清空', false);
+  }
+  // 双向合并算法（含墓碑删除传播 + 30天清理）
+  // 输入：local[]（含墓碑）、remote[]（含墓碑）
+  // 输出：merged[]（含墓碑），统计 {added, updated, deleted}
+  function mergeRecords(local, remote) {
+    const map = new Map();
+    // 先放本地
+    local.forEach(r => {
+      const m = r.mtime || 0;
+      map.set(r.id, { ...r, mtime: m });
+    });
+    let added = 0, updated = 0, deletedCount = 0;
+    // 合并云端
+    remote.forEach(r => {
+      const existing = map.get(r.id);
+      const rm = r.mtime || 0;
+      if (!existing) {
+        // 云端独有：下载
+        map.set(r.id, { ...r, mtime: rm });
+        added++;
+      } else {
+        // 两端都有：取 mtime 大的
+        const lm = existing.mtime || 0;
+        if (rm > lm) {
+          // 云端更新（可能是删除操作）
+          if (r.deleted && !existing.deleted) deletedCount++;
+          map.set(r.id, { ...r, mtime: rm });
+          updated++;
+        } else if (lm > rm) {
+          // 本地更新，保留本地（已在map中）
+          if (existing.deleted && !r.deleted) deletedCount++;
+          updated++;
+        }
+        // mtime相等不动
+      }
+    });
+    // 本地独有也要算"需要上传"
+    const remoteIds = new Set(remote.map(r => r.id));
+    local.forEach(r => {
+      if (!remoteIds.has(r.id)) {
+        // 本地独有：会上传（不算added/updated，因为不影响本地）
+      }
+    });
+    // 清理 30 天前的墓碑
+    const now = Date.now();
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+    const cleaned = [];
+    let cleanedCount = 0;
+    for (const r of map.values()) {
+      if (r.deleted && r.mtime && (now - r.mtime) > THIRTY_DAYS) {
+        cleanedCount++;
+        continue; // 跳过=真删
+      }
+      cleaned.push(r);
+    }
+    cleaned.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return { merged: cleaned, added, updated, deletedCount, cleanedCount };
+  }
+  // 主同步入口（manual=true 为手动点按钮，false 为自动同步）
+  async function syncCloud(manual) {
+    const token = (localStorage.getItem('fx_cloud_token') || '').trim();
+    let gistId = (localStorage.getItem('fx_cloud_gist_id') || '').trim();
+    if (!token) {
+      if (manual) {
+        // 手动点同步但没配 Token：弹设置
+        showSettings();
+        setCloudStatus('请先填 Token 和 Gist ID，保存后再点"云同步"', true);
+      }
+      return;
+    }
+    if (manual) showToast('同步中...');
     try {
-      const res = await fetch('https://api.github.com/gists/' + gistId, {
-        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const j = await res.json();
-      const f = j.files && j.files['fx_records.json'];
-      if (!f) throw new Error('Gist 中无 fx_records.json');
-      const data = JSON.parse(f.content);
-      localStorage.setItem('fx_cloud_token', token);
-      localStorage.setItem('fx_cloud_gist_id', gistId);
-      let added = 0, skipped = 0;
+      // 1. 拉云端（有 Gist ID 才拉）
+      let remoteData = {};
+      if (gistId) {
+        const res = await fetch('https://api.github.com/gists/' + gistId, {
+          headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+        });
+        if (res.status === 404) {
+          // Gist ID 失效，重置为空，重新创建
+          gistId = '';
+          localStorage.removeItem('fx_cloud_gist_id');
+        } else if (!res.ok) {
+          throw new Error('拉取失败 HTTP ' + res.status);
+        } else {
+          const j = await res.json();
+          const f = j.files && j.files['fx_records.json'];
+          if (f && f.content) {
+            try { remoteData = JSON.parse(f.content); } catch (e) { /* 空内容跳过 */ }
+          }
+        }
+      }
+      // 2. 对每个货币对合并
+      const toUpload = {};
+      let totalAdded = 0, totalUpdated = 0, totalDeleted = 0, totalCleaned = 0;
       ['USD','HKD','JPY'].forEach(c => {
         const key = 'fx_' + c;
-        const existing = JSON.parse(localStorage.getItem(key) || '[]');
-        const keys = new Set(existing.map(r => `${r.date}|${r.dir}|${r.amount}|${r.rate}`));
-        (data[key] || []).forEach(r => {
-          const k = `${r.date}|${r.dir||'buy'}|${r.amount}|${r.rate}`;
-          if (keys.has(k)) { skipped++; return; }
-          existing.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), dir: r.dir||'buy', date: r.date, amount: Number(r.amount), rate: Number(r.rate) });
-          keys.add(k);
-          added++;
-        });
-        existing.sort((a,b) => a.date.localeCompare(b.date));
-        localStorage.setItem(key, JSON.stringify(existing));
+        const local = getAllFxRecords(c);
+        const remote = remoteData[key] || [];
+        const r = mergeRecords(local, remote);
+        toUpload[key] = r.merged;
+        saveFxRecords(c, r.merged);
+        totalAdded += r.added;
+        totalUpdated += r.updated;
+        totalDeleted += r.deletedCount;
+        totalCleaned += r.cleanedCount;
       });
+      // 3. 写回云端（POST 创建 or PATCH 更新）
+      const method = gistId ? 'PATCH' : 'POST';
+      const url = 'https://api.github.com/gists' + (gistId ? '/' + gistId : '');
+      const res2 = await fetch(url, {
+        method: method,
+        headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: 'cny-exchange-rates sync', public: false, files: { 'fx_records.json': { content: JSON.stringify(toUpload) } } })
+      });
+      if (!res2.ok) { const e = await res2.json().catch(() => ({})); throw new Error(e.message || ('写回失败 HTTP ' + res2.status)); }
+      const j2 = await res2.json();
+      // 首次创建回填 Gist ID
+      if (!gistId && j2.id) {
+        gistId = j2.id;
+        localStorage.setItem('fx_cloud_gist_id', gistId);
+        // 回填设置弹窗输入框（若已打开）
+        if ($('cloud-modal').classList.contains('show')) {
+          $('cloud-gist-id').value = gistId;
+        }
+      }
+      // 4. 刷新显示
       renderHome();
-      setCloudStatus('下载完成：新增 ' + added + ' 条，跳过 ' + skipped + ' 条（重复）', false);
+      if (state.currentPair) {
+        renderFxList(state.currentPair);
+        renderDetail(state.currentPair, state.currentRange);
+      }
+      // 5. 提示
+      const msg = `同步完成：新增 ${totalAdded} 条，更新 ${totalUpdated} 条，删除 ${totalDeleted} 条${totalCleaned ? '，清理 ' + totalCleaned + ' 条旧墓碑' : ''}`;
+      if (manual) {
+        setCloudStatus(msg, false);
+        showToast(msg, 3000);
+      } else {
+        // 自动同步：仅在有变化时提示
+        if (totalAdded || totalUpdated || totalDeleted || totalCleaned) {
+          showToast(msg, 3000);
+        }
+      }
     } catch (e) {
-      setCloudStatus('下载失败：' + e.message, true);
+      const msg = '同步失败：' + e.message;
+      if (manual) {
+        setCloudStatus(msg, true);
+        showToast(msg, 4000);
+      } else {
+        // 自动同步失败也要提示
+        showToast(msg, 4000);
+      }
     }
   }
 
@@ -1188,6 +1323,8 @@
         const pair = PAIRS.find(p => p.code === code);
         if (pair) showDetail(pair);
       }
+      // 首次加载自动云同步一次（静默，有变化或失败才提示）
+      syncCloud(false);
     });
   });
 </script>
