@@ -560,6 +560,25 @@
   function hideBanner() { $('banner').style.display = 'none'; }
 
   // ============ Detail ============
+  // 向右滑动返回上一页（仅详情页，起点在左侧1/3，横向≥80px，纵向≤50px，耗时≤600ms）
+  (function() {
+    let sx = 0, sy = 0, st = 0;
+    document.addEventListener('touchstart', (e) => {
+      if (!location.hash || location.hash === '#') return;
+      const t = e.touches[0];
+      sx = t.clientX; sy = t.clientY; st = Date.now();
+    }, { passive: true });
+    document.addEventListener('touchend', (e) => {
+      if (!location.hash || location.hash === '#') return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
+      // 起点在左侧1/3，向右滑动横向≥80px，纵向位移≤50px，耗时≤600ms
+      if (sx < window.innerWidth / 3 && dx >= 80 && Math.abs(dy) <= 50 && dt <= 600) {
+        showHome();
+      }
+    }, { passive: true });
+  })();
+
   function showHome() {
     if (state.chart) { state.chart.destroy(); state.chart = null; }
     $('view-detail').classList.remove('active');
