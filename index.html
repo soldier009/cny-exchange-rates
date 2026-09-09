@@ -935,7 +935,7 @@
           updated++;
         } else if (lm > rm) {
           // 本地更新，保留本地（已在map中）
-          if (existing.deleted && !r.deleted) deletedCount++;
+          // 本地是墓碑云端是正常 = 本地刚删，保留墓碑，但不算"删除传播"（本地已知删）
           updated++;
         }
         // mtime相等不动
