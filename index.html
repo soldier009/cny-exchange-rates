@@ -365,8 +365,8 @@
   ];
 
   const API = 'https://api.frankfurter.dev/v1';
-  // state.current: { date, rates:{CNY,HKD,JPY}, stale? } 来自任一可用数据源
-  // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
+  // state.current: { date, rates:{CNY,HKD,JPY,GBP}, stale? } 来自任一可用数据源
+  // state.history: { 'YYYY-MM-DD': {CNY,HKD,JPY,GBP} } 来自时间序列端点（用于曲线 & 涨跌对比，可能失败）
   const state = { current: null, history: null, latestDay: null, prevRates: null, chart: null, refreshCount: 0, chartReady: null, historyByRange: {}, currentRange: 30, currentPair: null };
 
   // 内置静态兜底数据（当所有在线数据源都不可达时使用，标注"离线缓存"）
@@ -421,7 +421,7 @@
   }
 
   // 当前汇率：尝试多个免费数据源，任一成功即用；全部失败则用静态兜底
-  // 统一输出格式：{ date:'YYYY-MM-DD', rates:{CNY,HKD,JPY}, stale?:bool }
+  // 统一输出格式：{ date:'YYYY-MM-DD', rates:{CNY,HKD,JPY,GBP}, stale?:bool }
   async function fetchCurrent() {
     const sources = [
       // 1) exchangerate.fun（每小时更新市场汇率，无 key，公益 10 年承诺）
