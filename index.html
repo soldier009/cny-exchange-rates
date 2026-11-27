@@ -360,7 +360,8 @@
   const PAIRS = [
     { code: 'USD', base: 'USD', quote: 'CNY', unit: 1, flag: '🇺🇸', name: '美元', full: '人民币兑美元', unitText: '1 美元 =' },
     { code: 'HKD', base: 'HKD', quote: 'CNY', unit: 1, flag: '🇭🇰', name: '港币', full: '人民币兑港币', unitText: '1 港币 =' },
-    { code: 'JPY', base: 'JPY', quote: 'CNY', unit: 100, flag: '🇯🇵', name: '日元', full: '人民币兑日元', unitText: '100 日元 =' }
+    { code: 'JPY', base: 'JPY', quote: 'CNY', unit: 100, flag: '🇯🇵', name: '日元', full: '人民币兑日元', unitText: '100 日元 =' },
+    { code: 'GBP', base: 'GBP', quote: 'CNY', unit: 1, flag: '🇬🇧', name: '英镑', full: '人民币兑英镑', unitText: '1 英镑 =' }
   ];
 
   const API = 'https://api.frankfurter.dev/v1';
@@ -372,7 +373,7 @@
   // 数值取自最近一次成功获取的 frankfurter.app 返回（USD=base）
   const FALLBACK_CURRENT = {
     date: '2026-08-20',
-    rates: { CNY: 6.7236, HKD: 7.8438, JPY: 158.76 },
+    rates: { CNY: 6.7236, HKD: 7.8438, JPY: 158.76, GBP: 8.82 },
     stale: true
   };
 
@@ -429,34 +430,34 @@
         if (!j || !j.rates || !j.rates.CNY) throw new Error('exchangerate.fun: bad data');
         const ts = (j.timestamp || Date.now() / 1000);
         const date = toCNDate(new Date(ts * 1000));
-        return { date, ts, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+        return { date, ts, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY, GBP: j.rates.GBP } };
       },
       // 2) frankfurter.dev（欧洲央行中间价，无 key，也用于历史曲线）
       async () => {
-        const j = await fetchJSON(`${API}/latest?base=USD&symbols=CNY,HKD,JPY`, 9000);
+        const j = await fetchJSON(`${API}/latest?base=USD&symbols=CNY,HKD,JPY,GBP`, 9000);
         if (!j || !j.rates || !j.rates.CNY) throw new Error('frankfurter: bad data');
-        return { date: j.date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+        return { date: j.date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY, GBP: j.rates.GBP } };
       },
       // 2) open.er-api.com（无 key）
       async () => {
         const j = await fetchJSON('https://open.er-api.com/v1/latest/quotes/USD.json', 9000);
         if (!j || !j.rates || !j.rates.CNY) throw new Error('er-api: bad data');
         const date = (j.date_update || j.time_last_update_utc || '').slice(0, 10) || todayISO();
-        return { date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY } };
+        return { date, rates: { CNY: j.rates.CNY, HKD: j.rates.HKD, JPY: j.rates.JPY, GBP: j.rates.GBP } };
       },
       // 3) jsdelivr 上的 fawazahmed0 currency-api 静态文件
       async () => {
         const j = await fetchJSON('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', 9000);
         if (!j || !j.usd || !j.usd.cny) throw new Error('fawaz: bad data');
         const date = (j.date || '').replace(/\//g, '-') || todayISO();
-        return { date, rates: { CNY: j.usd.cny, HKD: j.usd.hkd, JPY: j.usd.jpy } };
+        return { date, rates: { CNY: j.usd.cny, HKD: j.usd.hkd, JPY: j.usd.jpy, GBP: j.usd.gbp } };
       },
       // 4) floatrates daily
       async () => {
         const j = await fetchJSON('https://www.floatrates.com/daily/usd.json', 9000);
         if (!j || !j.cny) throw new Error('floatrates: bad data');
         const date = (j.cny.date || todayISO()).slice(0, 10);
-        return { date, rates: { CNY: j.cny.rate, HKD: j.hkd.rate, JPY: j.jpy.rate } };
+        return { date, rates: { CNY: j.cny.rate, HKD: j.hkd.rate, JPY: j.jpy.rate, GBP: j.gbp ? j.gbp.rate : null } };
       }
     ];
 
@@ -476,7 +477,7 @@
     const today = todayISO();
     const from = addDays(today, -days);
     const timeout = days > 2000 ? 30000 : (days > 400 ? 20000 : 9000);
-    const j = await fetchJSON(`${API}/${from}..${today}?base=USD&symbols=CNY,HKD,JPY`, timeout);
+    const j = await fetchJSON(`${API}/${from}..${today}?base=USD&symbols=CNY,HKD,JPY,GBP`, timeout);
     return j.rates || {};
   }
 
@@ -1000,7 +1001,7 @@
       // 2. 对每个货币对合并
       const toUpload = {};
       let totalAdded = 0, totalUpdated = 0, totalDeleted = 0, totalCleaned = 0;
-      ['USD','HKD','JPY'].forEach(c => {
+      ['USD','HKD','JPY','GBP'].forEach(c => {
         const key = 'fx_' + c;
         const local = getAllFxRecords(c);
         const remote = remoteData[key] || [];
